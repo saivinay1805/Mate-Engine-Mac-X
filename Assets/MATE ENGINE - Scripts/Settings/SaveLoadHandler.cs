@@ -43,6 +43,7 @@ public class SaveLoadHandler : MonoBehaviour
         }
 
         LoadFromDisk();
+        data.enableFeedSystem = true;
         ApplyAllSettingsToAllAvatars();
 
         var theme = FindAnyObjectByType<ThemeManager>();
@@ -275,7 +276,7 @@ public class SaveLoadHandler : MonoBehaviour
         public bool enableMinecraftMessages = false;
 
         public string selectedParticleTheme = "Standard";
-        public bool enableFeedSystem = false;
+        public bool enableFeedSystem = true;
         public bool enableRandomAvatar = false;
 
         public bool enableLocomotion = false;
@@ -302,12 +303,11 @@ public class SaveLoadHandler : MonoBehaviour
         {
             public string id;
             public bool enabled;
-            public int hours;
-            public int minutes;
-            public int presetSeconds;
-            public bool running;
-            public long targetUnix;
+            public int targetSeconds;
             public string text;
+            public long targetUnixTimestamp;
+            public bool isRunning;
+            public int remainingSeconds;
         }
 
         public List<TimerEntry> timers = new List<TimerEntry>();
@@ -354,7 +354,7 @@ public class SaveLoadHandler : MonoBehaviour
             avatar.DANCE_SWITCH_TIME = data.danceSwitchTime;
             avatar.DANCE_TRANSITION_TIME = data.danceTransitionTime;
             avatar.enableDanceSwitch = data.enableDanceSwitch;
-            avatar.DANCE_CLIP_COUNT = Mathf.Clamp(data.danceClipCount, 1, 20);
+            avatar.DANCE_CLIP_COUNT = Mathf.Clamp(data.danceClipCount, 1, 17);
             avatar.pinnedDanceIndex = data.pinnedDanceIndex;
             avatar.enableHusbandoMode = data.enableHusbandoMode;
 

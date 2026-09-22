@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
@@ -54,6 +54,12 @@ namespace Xamin
 
         public void ExecuteAction()
         {
+            if ((id != null && (id.Equals("food", System.StringComparison.OrdinalIgnoreCase) || id.Equals("macaroon", System.StringComparison.OrdinalIgnoreCase)))
+                || (gameObject != null && gameObject.name.IndexOf("Macaroon", System.StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                MenuActions.ToggleFoodMenu();
+                return;
+            }
             action.Invoke();
         }
     }

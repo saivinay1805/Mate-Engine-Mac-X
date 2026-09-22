@@ -44,6 +44,12 @@ public class AccessoiresHandler : MonoBehaviour
         foreach (var rule in rules)
         {
             if (rule.linkedObject == null) continue;
+            foreach (var l in rule.linkedObject.GetComponentsInChildren<Light>(true))
+            {
+                l.renderMode = LightRenderMode.ForcePixel;
+                l.range = 1.25f;
+                l.cullingMask = 1 << 10; // Only illuminate Layer 10 (Model), avoiding the Shadow backdrop plane at z=2.02
+            }
             Transform boneTransform = animator.GetBoneTransform(rule.targetBone);
             if (boneTransform == null) continue;
 

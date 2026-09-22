@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using NAudio.CoreAudioApi;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,7 +10,7 @@ public class AvatarAnimatorController : MonoBehaviour
     public Animator animator;
     public float SOUND_THRESHOLD = 0.02f;
     public List<string> allowedApps = new();
-    public int totalIdleAnimations = 10;
+    public int totalIdleAnimations = 26;
     public float IDLE_SWITCH_TIME = 12f, IDLE_TRANSITION_TIME = 3f;
     [Header("Dancing")]
     public bool enableDancing = true;
@@ -21,8 +21,8 @@ public class AvatarAnimatorController : MonoBehaviour
     public bool enableDanceSwitch = true;
     public float DANCE_SWITCH_TIME = 15f;
     public float DANCE_TRANSITION_TIME = 2f;
-    // Female blend tree 共 20 个动作（threshold 0-19），此值控制自动循环范围上限
-    public int DANCE_CLIP_COUNT = 20;
+    // Female blend tree 17 dance routines
+    public int DANCE_CLIP_COUNT = 17;
     // -1 = 自动循环，0~(DANCE_CLIP_COUNT-1) = 固定到指定编号的舞蹈
     public int pinnedDanceIndex = -1;
 

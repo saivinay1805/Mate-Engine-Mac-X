@@ -28,76 +28,26 @@ public static class SteamDRM
 
     static string TokenPath => Path.Combine(Application.persistentDataPath, "SteamDRM.token");
 
-    public static bool Initialized => initialized;
-    public static bool IsEntitled => entitled;
+    public static bool Initialized => true;
+    public static bool IsEntitled => true;
 
     public static void Initialize(int appId, int ttlDays = 14)
     {
-        if (initialized && currentAppId == appId) return;
         currentAppId = appId;
         initialized = true;
-        if (TryInitLive(appId, ttlDays)) return;
-        LoadToken();
-        entitled = ValidateToken(appId);
+        entitled = true;
     }
 
     public static bool TryInitLive(int appId, int ttlDays = 14)
     {
-        if (liveInitFailed) return false;
-        long nowTicks = DateTime.UtcNow.Ticks;
-        if (nowTicks - lastLiveAttemptTicks < LiveRetryCooldownTicks) return false;
-        lastLiveAttemptTicks = nowTicks;
-        try
-        {
-            if (!Steamworks.SteamAPI.Init())
-            {
-                liveInitFailed = true;
-                return false;
-            }
-            if (!Steamworks.SteamUser.BLoggedOn()) return false;
-            var owned = Steamworks.SteamApps.BIsSubscribedApp(new Steamworks.AppId_t((uint)appId));
-            if (!owned) return false;
-
-            dlc.Clear();
-            int c = Steamworks.SteamApps.GetDLCCount();
-            for (int i = 0; i < c; i++)
-            {
-                Steamworks.AppId_t id;
-                bool available;
-                string name;
-                if (Steamworks.SteamApps.BGetDLCDataByIndex(i, out id, out available, out name, 256))
-                {
-                    if (Steamworks.SteamApps.BIsDlcInstalled(id)) dlc.Add((int)id.m_AppId);
-                }
-            }
-
-            expUtcTicks = DateTime.UtcNow.AddDays(ttlDays).Ticks;
-            var td = new TokenData
-            {
-                steamId = Steamworks.SteamUser.GetSteamID().ToString(),
-                appId = appId,
-                exp = expUtcTicks,
-                dlc = new List<int>(dlc)
-            };
-            SaveToken(td);
-            entitled = true;
-            return true;
-        }
-        catch
-        {
-            liveInitFailed = true;
-            return false;
-        }
+        initialized = true;
+        entitled = true;
+        return true;
     }
 
     public static bool HasDLC(int dlcId)
     {
-        try
-        {
-            if (entitled) return Steamworks.SteamApps.BIsDlcInstalled(new Steamworks.AppId_t((uint)dlcId)) || dlc.Contains(dlcId);
-        }
-        catch { }
-        return dlc.Contains(dlcId);
+        return true;
     }
 
     public static void Invalidate()

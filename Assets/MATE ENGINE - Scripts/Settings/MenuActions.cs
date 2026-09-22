@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -105,7 +105,14 @@ public class MenuActions : MonoBehaviour
     {
         if (radialMenu == null) return;
 
-        bool keyDown = Input.GetKeyDown(radialMenuKey);
+        bool keyDown = Input.GetKeyDown(radialMenuKey) || (radialMenuKey == KeyCode.Mouse2 && Input.GetKeyDown(KeyCode.F2));
+        if (radialMenuKey == KeyCode.Mouse2 && keyDown)
+        {
+            if (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null)
+                SaveLoadHandler.Instance.data.enableFeedSystem = true;
+            foreach (var food in Resources.FindObjectsOfTypeAll<AvatarFoodController>())
+                if (food != null) food.SetFeatureEnabled(true);
+        }
         if (!keyDown)
         {
             if (followBone && IsRadialOpen() && radialRect != null && currentAnimator != null)
@@ -306,6 +313,44 @@ public class MenuActions : MonoBehaviour
             }
         }
         return false;
+    }
+
+    public static void ToggleFoodMenu()
+    {
+        for (int i = 0; i < Instances.Count; i++)
+        {
+            var inst = Instances[i];
+            if (inst != null && inst.radialMenuKey == KeyCode.Mouse2)
+            {
+                if (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null)
+                    SaveLoadHandler.Instance.data.enableFeedSystem = true;
+                foreach (var food in Resources.FindObjectsOfTypeAll<AvatarFoodController>())
+                    if (food != null) food.SetFeatureEnabled(true);
+
+                if (inst.IsRadialOpen())
+                {
+                    inst.radialMenu.Close();
+                    inst.PlayMenuCloseSound();
+                }
+                else
+                {
+                    inst.CloseOtherRadials();
+                    if (inst.followBone && inst.currentAnimator != null)
+                    {
+                        var bone = inst.currentAnimator.GetBoneTransform(inst.targetBone);
+                        if (bone != null)
+                        {
+                            inst.screenPosition = inst.ClampToScreen(inst.mainCam.WorldToScreenPoint(bone.position));
+                            if (RectTransformUtility.ScreenPointToWorldPointInRectangle(inst.radialRect.parent as RectTransform, inst.screenPosition, inst.mainCam, out Vector3 worldPos))
+                                inst.radialRect.position = worldPos;
+                        }
+                    }
+                    if (inst.radialMenu.Open())
+                        inst.PlayMenuOpenSound();
+                }
+                return;
+            }
+        }
     }
 
     void PlayMenuOpenSound() => FindAnyObjectByType<MenuAudioHandler>()?.PlayOpenSound();

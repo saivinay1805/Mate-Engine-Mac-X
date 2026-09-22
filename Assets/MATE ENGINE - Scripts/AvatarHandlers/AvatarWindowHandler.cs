@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -256,7 +256,14 @@ public class AvatarWindowHandler : MonoBehaviour
         HandleCliffTuningHotkey();
         HandleSeatHeightHotkey();
 
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        // On macOS, track window frame-synchronously when dragging or sitting on a window to eliminate
+        // 15 FPS stepped jitter when moving windows at 60/100/120Hz display refresh rates.
+        // Idle tracking remains at windowEnumIdleFPS (8 FPS) to conserve CPU/battery.
+        float enumHz = (controller.isDragging || snappedHWND != IntPtr.Zero) ? 1000f : Mathf.Max(1f, windowEnumIdleFPS);
+#else
         float enumHz = (controller.isDragging || snappedHWND != IntPtr.Zero) ? Mathf.Max(1f, windowEnumFPS) : Mathf.Max(1f, windowEnumIdleFPS);
+#endif
         if (Time.unscaledTime >= _nextEnumTime)
         {
             UpdateCachedWindows();

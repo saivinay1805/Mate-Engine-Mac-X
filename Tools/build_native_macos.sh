@@ -87,6 +87,7 @@ build_bundle MacWindowList com.shinymoon.mateengine.macwindowlist 1.0 "$SRC_DIR/
 
 build_bundle MacAudioMonitor com.shinymoon.mateengine.macaudiomonitor 1 "$SRC_DIR/MacAudioMonitor.m" \
   "$SRC_DIR/fishhook.c" \
+  -framework Cocoa \
   -framework AVFoundation \
   -framework CoreAudio \
   -framework CoreMedia \

@@ -1,3 +1,4 @@
+#import <Cocoa/Cocoa.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreAudio/CoreAudio.h>
 #import <CoreMedia/CoreMedia.h>
@@ -11,9 +12,261 @@
 
 #import "fishhook.h"
 #import <stdarg.h>
+#import <sys/socket.h>
+#import <sys/un.h>
+#import <sys/poll.h>
 
 static int (*orig_close)(int) = NULL;
 static int (*orig_open)(const char *, int, ...) = NULL;
+static int (*orig_connect)(int, const struct sockaddr *, socklen_t) = NULL;
+
+static const char *FindRealDiscordSocket(void)
+{
+    static char foundPath[PATH_MAX] = {0};
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp) tmp = "/tmp/";
+    char candidate[PATH_MAX];
+    for (int i = 0; i < 10; i++) {
+        snprintf(candidate, sizeof(candidate), "%sdiscord-ipc-%d", tmp, i);
+        if (access(candidate, F_OK) == 0) {
+            strncpy(foundPath, candidate, sizeof(foundPath) - 1);
+            return foundPath;
+        }
+    }
+    for (int i = 0; i < 10; i++) {
+        snprintf(candidate, sizeof(candidate), "/tmp/discord-ipc-%d", i);
+        if (access(candidate, F_OK) == 0) {
+            strncpy(foundPath, candidate, sizeof(foundPath) - 1);
+            return foundPath;
+        }
+    }
+    return NULL;
+}
+
+static BOOL SendDiscordFrame(int sock, uint32_t opcode, NSData *jsonData)
+{
+    if (sock < 0 || !jsonData) return NO;
+    uint32_t len = (uint32_t)[jsonData length];
+    uint32_t header[2];
+    header[0] = CFSwapInt32HostToLittle(opcode);
+    header[1] = CFSwapInt32HostToLittle(len);
+    if (send(sock, header, sizeof(header), 0) != sizeof(header)) return NO;
+    const char *bytes = (const char *)[jsonData bytes];
+    size_t total = 0;
+    while (total < len) {
+        ssize_t sent = send(sock, bytes + total, len - total, 0);
+        if (sent <= 0) return NO;
+        total += sent;
+    }
+    return YES;
+}
+
+static BOOL ReadDiscordFrame(int sock, uint32_t *outOpcode, char *outBuffer, size_t maxLen)
+{
+    if (sock < 0) return NO;
+    struct pollfd pfd;
+    pfd.fd = sock;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    int pr = poll(&pfd, 1, 1500);
+    if (pr <= 0) return NO;
+    uint32_t header[2];
+    ssize_t recvd = recv(sock, header, sizeof(header), MSG_WAITALL);
+    if (recvd != sizeof(header)) return NO;
+    uint32_t op = CFSwapInt32LittleToHost(header[0]);
+    uint32_t len = CFSwapInt32LittleToHost(header[1]);
+    if (outOpcode) *outOpcode = op;
+    if (len >= maxLen) len = (uint32_t)(maxLen - 1);
+    recvd = recv(sock, outBuffer, len, MSG_WAITALL);
+    if (recvd <= 0) return NO;
+    outBuffer[recvd] = '\0';
+    return YES;
+}
+
+static void DrainDiscordReplies(int sock)
+{
+    if (sock < 0) return;
+    char drainBuf[1024];
+    while (recv(sock, drainBuf, sizeof(drainBuf), MSG_DONTWAIT) > 0) {
+    }
+}
+
+static BOOL IsDiscordRPCEnabledInSettings(void)
+{
+    NSString *home = NSHomeDirectory();
+    NSString *settingsPath = [home stringByAppendingPathComponent:@"Library/Application Support/com.Shinymoon.MateEngineX/settings.json"];
+    NSData *data = [NSData dataWithContentsOfFile:settingsPath];
+    if (!data) return YES;
+    
+    NSError *err = nil;
+    NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data options:0 error:&err];
+    if (dict && [dict isKindOfClass:[NSDictionary class]]) {
+        NSNumber *val = dict[@"enableDiscordRPC"];
+        if (val && [val isKindOfClass:[NSNumber class]]) {
+            return [val boolValue];
+        }
+    }
+    return YES;
+}
+
+static int64_t gGameStartTimeMs = 0;
+
+static void StartDiscordBackgroundService(void)
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        gGameStartTimeMs = (int64_t)([[NSDate date] timeIntervalSince1970] * 1000);
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+            int sock = -1;
+            BOOL hasSentInitialPresence = NO;
+            BOOL lastDragging = NO;
+            
+            while (1) {
+                @autoreleasepool {
+                    BOOL isEnabled = IsDiscordRPCEnabledInSettings();
+                    if (isEnabled) {
+                        if (sock < 0) {
+                            const char *sockPath = FindRealDiscordSocket();
+                            if (sockPath) {
+                                int s = socket(AF_UNIX, SOCK_STREAM, 0);
+                                if (s >= 0) {
+                                    if (s <= 2) {
+                                        int safe = fcntl(s, F_DUPFD, 3);
+                                        if (safe >= 3) {
+                                            close(s);
+                                            s = safe;
+                                        }
+                                    }
+                                    int nosig = 1;
+                                    setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
+                                    
+                                    struct sockaddr_un addr;
+                                    memset(&addr, 0, sizeof(addr));
+                                    addr.sun_len = sizeof(struct sockaddr_un);
+                                    addr.sun_family = AF_UNIX;
+                                    strncpy(addr.sun_path, sockPath, sizeof(addr.sun_path) - 1);
+                                    
+                                    int cr = orig_connect ? orig_connect(s, (const struct sockaddr *)&addr, sizeof(addr))
+                                                          : connect(s, (const struct sockaddr *)&addr, sizeof(addr));
+                                    if (cr == 0) {
+                                        NSDictionary *hsDict = @{@"v": @1, @"client_id": @"1358821058102296816"};
+                                        NSData *hsData = [NSJSONSerialization dataWithJSONObject:hsDict options:0 error:nil];
+                                        if (SendDiscordFrame(s, 0, hsData)) {
+                                            uint32_t op = 0;
+                                            char replyBuf[2048];
+                                            if (ReadDiscordFrame(s, &op, replyBuf, sizeof(replyBuf))) {
+                                                sock = s;
+                                                hasSentInitialPresence = NO;
+                                                lastDragging = NO;
+                                                NSLog(@"[MacDiscord] Connected to Discord IPC successfully!");
+                                            } else {
+                                                close(s);
+                                            }
+                                        } else {
+                                            close(s);
+                                        }
+                                    } else {
+                                        close(s);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (sock >= 0) {
+                            BOOL isMouseDown = CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft);
+                            NSRunningApplication *frontApp = [[NSWorkspace sharedWorkspace] frontmostApplication];
+                            BOOL isFront = [frontApp.bundleIdentifier isEqualToString:@"com.Shinymoon.MateEngineX"];
+                            BOOL isDragging = (isMouseDown && isFront);
+                            
+                            if (!hasSentInitialPresence || isDragging != lastDragging) {
+                                hasSentInitialPresence = YES;
+                                lastDragging = isDragging;
+                                
+                                NSString *details = isDragging ? @"Throwing around my desktop pet!" : @"Playing with my desktop pet";
+                                NSString *state = isDragging ? @"Help!!" : @"Just vibing";
+                                
+                                NSDictionary *actDict = @{
+                                    @"cmd": @"SET_ACTIVITY",
+                                    @"args": @{
+                                        @"pid": @(getpid()),
+                                        @"activity": @{
+                                            @"state": state,
+                                            @"details": details,
+                                            @"timestamps": @{@"start": @(gGameStartTimeMs)},
+                                            @"assets": @{
+                                                @"large_image": @"logo",
+                                                @"large_text": @"MateEngine",
+                                                @"small_image": @"steam-icon",
+                                                @"small_text": @"Steam Edition"
+                                            },
+                                            @"buttons": @[
+                                                @{@"label": @"Visit Website", @"url": @"https://mateengine.com"}
+                                            ]
+                                        }
+                                    },
+                                    @"nonce": [NSString stringWithFormat:@"%lld", (long long)[[NSDate date] timeIntervalSince1970]]
+                                };
+                                NSData *actData = [NSJSONSerialization dataWithJSONObject:actDict options:0 error:nil];
+                                if (!SendDiscordFrame(sock, 1, actData)) {
+                                    close(sock);
+                                    sock = -1;
+                                    hasSentInitialPresence = NO;
+                                } else {
+                                    NSLog(@"[MacDiscord] Sent presence: %@ / %@", details, state);
+                                }
+                            }
+                            
+                            if (sock >= 0) {
+                                DrainDiscordReplies(sock);
+                                int err = 0;
+                                socklen_t elen = sizeof(err);
+                                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &err, &elen) != 0 || err != 0) {
+                                    close(sock);
+                                    sock = -1;
+                                    hasSentInitialPresence = NO;
+                                }
+                            }
+                        }
+                    } else {
+                        if (sock >= 0) {
+                            NSDictionary *clearDict = @{
+                                @"cmd": @"SET_ACTIVITY",
+                                @"args": @{
+                                    @"pid": @(getpid()),
+                                    @"activity": [NSNull null]
+                                },
+                                @"nonce": [NSString stringWithFormat:@"%lld", (long long)[[NSDate date] timeIntervalSince1970]]
+                            };
+                            NSData *clearData = [NSJSONSerialization dataWithJSONObject:clearDict options:0 error:nil];
+                            SendDiscordFrame(sock, 1, clearData);
+                            close(sock);
+                            sock = -1;
+                            hasSentInitialPresence = NO;
+                            NSLog(@"[MacDiscord] RPC disabled in settings; disconnected.");
+                        }
+                    }
+                }
+                [NSThread sleepForTimeInterval:2.0];
+            }
+        });
+    });
+}
+
+static int my_connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
+{
+    if (addr) {
+        const struct sockaddr_un *un = (const struct sockaddr_un *)addr;
+        if (addr->sa_family == AF_UNIX || un->sun_family == AF_UNIX) {
+            if (strstr(un->sun_path, "discord-ipc") != NULL || strstr(un->sun_path, "CoreFxPipe") != NULL) {
+                // Block Mono's broken NamedPipe attempts so it fails cleanly without spinning or closing fds
+                errno = ECONNREFUSED;
+                return -1;
+            }
+        }
+    }
+    int res = orig_connect ? orig_connect(sockfd, addr, addrlen) : connect(sockfd, addr, addrlen);
+    return res;
+}
 
 static int my_close(int fd)
 {
@@ -79,11 +332,12 @@ void MacAudio_FixStandardFileDescriptors(void)
         }
 
         struct rebinding rebindings[] = {
-            {"close", (void *)my_close, (void **)&orig_close},
-            {"open",  (void *)my_open,  (void **)&orig_open}
+            {"close",   (void *)my_close,   (void **)&orig_close},
+            {"open",    (void *)my_open,    (void **)&orig_open},
+            {"connect", (void *)my_connect, (void **)&orig_connect}
         };
-        rebind_symbols(rebindings, 2);
-        NSLog(@"[MacAudioMonitor] Standard fd guards + fishhook close/open hooks installed successfully.");
+        rebind_symbols(rebindings, 3);
+        NSLog(@"[MacAudioMonitor] Standard fd guards + fishhook close/open/connect hooks installed successfully.");
     });
 }
 
@@ -94,6 +348,7 @@ void MacAudio_FixStandardFileDescriptors(void)
 + (void)load
 {
     MacAudio_FixStandardFileDescriptors();
+    StartDiscordBackgroundService();
 }
 @end
 

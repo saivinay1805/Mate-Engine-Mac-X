@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -111,6 +111,7 @@ namespace CustomDancePlayer
             public string extractedDir;
             public string author;
             public string stableId;
+            public bool isBuiltIn;
         }
 
 #pragma warning disable CS0649 // fields populated via JSON serialization
@@ -231,6 +232,13 @@ namespace CustomDancePlayer
         void Update()
         {
             RefreshAnimatorIfChanged();
+
+            if (entries.Count == 0 && animator != null)
+            {
+                LoadAllSources();
+                BuildListUI();
+                if (entries.Count > 0 && currentIndex < 0) currentIndex = 0;
+            }
 
             bool dancingOn = animator != null && HasBool(customDancingParam) && animator.GetBool(customDancingParam);
             if (isPlaying && !dancingOn && !holdDuringTransition) StopAndUnload();
@@ -463,7 +471,85 @@ namespace CustomDancePlayer
                     TryAddME(f);
             }
 
+            AddBuiltInDances();
+
             entries.Sort((a, b) => string.Compare(a.id, b.id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        void AddBuiltInDances()
+        {
+            if (animator == null) FindAvatarSmart();
+            var ctrl = animator != null ? (defaultController != null ? defaultController : animator.runtimeAnimatorController) : defaultController;
+            if (ctrl == null) return;
+
+            var clips = ctrl.animationClips;
+            if (clips == null || clips.Length == 0) return;
+
+            var danceNames = new (string clipKey, string displayName)[]
+            {
+                ("PET_DANCING", "Dance 01 - Standard"),
+                ("PET_DANCING_2", "Dance 02 - Cheer"),
+                ("PET_DANCING_3", "Dance 03 - Wave"),
+                ("PET_DANCING_4", "Dance 04 - Groove"),
+                ("PET_DANCING_5", "Dance 05 - Twist"),
+                ("PET_DANCING_6", "Dance 06 - Jump Step"),
+                ("PET_DANCING_7", "Dance 07 - Swing"),
+                ("PET_DANCING_8", "Dance 08 - Pop"),
+                ("PET_DANCING_9", "Dance 09 - Shuffle"),
+                ("PET_DANCING_10", "Dance 10 - Slide"),
+                ("PET_DANCING_11", "Dance 11 - Rhythm"),
+                ("PET_DANCING_12", "Dance 12 - Bounce"),
+                ("PET_DANCING_13", "Dance 13 - Disco"),
+                ("PET_DANCING_14", "Dance 14 - Hip-Hop"),
+                ("PET_DANCING_15", "Dance 15 - Samba"),
+                ("PET_DANCING_16", "Dance 16 - Salsa"),
+                ("PET_DANCING_17", "Dance 17 - Belly Dance"),
+                ("HUS_DANCE_01", "Husbando Dance 01"),
+                ("HUS_DANCE_02", "Husbando Dance 02"),
+                ("HUS_DANCE_03", "Husbando Dance 03"),
+                ("HUS_DANCE_04", "Husbando Dance 04"),
+                ("PET_IDLE_16", "Idle - Silly Talk"),
+                ("PET_IDLE_17", "Idle - Look Around"),
+                ("PET_IDLE_18", "Idle - Look Around 2"),
+                ("PET_IDLE_19", "Idle - Stop It"),
+                ("PET_IDLE_20", "Idle - Confusing"),
+                ("PET_IDLE_21", "Idle - Look Around 3")
+            };
+
+            var clipMap = new Dictionary<string, AnimationClip>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < clips.Length; i++)
+            {
+                var c = clips[i];
+                if (c != null && !clipMap.ContainsKey(c.name))
+                    clipMap[c.name] = c;
+            }
+
+            for (int i = 0; i < danceNames.Length; i++)
+            {
+                var tuple = danceNames[i];
+                if (clipMap.TryGetValue(tuple.clipKey, out var clip) && clip != null)
+                {
+                    string id = tuple.displayName;
+                    if (byId.ContainsKey(id)) continue;
+
+                    var e = new DanceEntry
+                    {
+                        id = id,
+                        path = "builtin:" + tuple.clipKey,
+                        bundlePath = null,
+                        clip = clip,
+                        audio = null,
+                        bundle = null,
+                        fromME = false,
+                        extractedDir = null,
+                        author = "Built-in Animation",
+                        stableId = "builtin:" + tuple.clipKey,
+                        isBuiltIn = true
+                    };
+                    entries.Add(e);
+                    byId[id] = e;
+                }
+            }
         }
 
         void TryAddUnity3D(string path)
@@ -743,14 +829,14 @@ namespace CustomDancePlayer
             var prev = loadedEntry;
 
             var e = entries[index];
-            if (e.bundle == null)
+            if (!e.isBuiltIn && e.bundle == null)
             {
                 string bp = string.IsNullOrEmpty(e.bundlePath) ? e.path : e.bundlePath;
                 e.bundle = AssetBundle.LoadFromFile(bp);
                 if (e.bundle == null) { UnfreezeAnimator(); holdDuringTransition = false; yield break; }
             }
-            if (e.clip == null) e.clip = e.bundle.LoadAllAssets<AnimationClip>().FirstOrDefault();
-            if (e.audio == null) e.audio = e.bundle.LoadAllAssets<AudioClip>().FirstOrDefault();
+            if (e.clip == null && e.bundle != null) e.clip = e.bundle.LoadAllAssets<AnimationClip>().FirstOrDefault();
+            if (e.audio == null && e.bundle != null) e.audio = e.bundle.LoadAllAssets<AudioClip>().FirstOrDefault();
 
             if (!EnsureAnimatorReady()) { UnfreezeAnimator(); holdDuringTransition = false; yield break; }
 
@@ -875,7 +961,7 @@ namespace CustomDancePlayer
 
         void UnloadEntry(DanceEntry e)
         {
-            if (e == null) return;
+            if (e == null || e.isBuiltIn || e.bundle == null) return;
             try { if (e.bundle != null) e.bundle.Unload(true); } catch { }
             e.bundle = null;
             e.clip = null;

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
@@ -121,6 +121,9 @@ public class SaveLoadHandler : MonoBehaviour
 
             string json = JsonConvert.SerializeObject(data, Formatting.Indented);
             string tmpPath = FilePath + ".tmp";
+#if UNITY_STANDALONE_OSX
+            try { MacSystemBridge.MacSys_EnsureStandardDescriptors(); } catch { }
+#endif
             File.WriteAllText(tmpPath, json);
             if (File.Exists(FilePath))
                 File.Replace(tmpPath, FilePath, null);

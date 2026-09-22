@@ -73,6 +73,7 @@ PLIST
 SRC_DIR="$ROOT/Assets/MATE ENGINE - System Tray/MacOSTray"
 
 build_bundle MacSystem com.shinymoon.mateengine.macsystem 1.0 "$SRC_DIR/MacSystem.m" \
+  "$SRC_DIR/fishhook.c" \
   -framework Cocoa \
   -framework CoreGraphics \
   -framework CoreVideo \
@@ -85,6 +86,7 @@ build_bundle MacWindowList com.shinymoon.mateengine.macwindowlist 1.0 "$SRC_DIR/
   -framework CoreGraphics
 
 build_bundle MacAudioMonitor com.shinymoon.mateengine.macaudiomonitor 1 "$SRC_DIR/MacAudioMonitor.m" \
+  "$SRC_DIR/fishhook.c" \
   -framework AVFoundation \
   -framework CoreAudio \
   -framework CoreMedia \

@@ -5,6 +5,98 @@
 #import <Foundation/Foundation.h>
 #import <IOSurface/IOSurface.h>
 #import <malloc/malloc.h>
+#import <fcntl.h>
+#import <unistd.h>
+
+// Guard standard file descriptors 0, 1, 2 on startup.
+// On macOS, when launched without standard streams (e.g. from Finder or LaunchServices),
+// fd 0 (stdin) is closed. If a background socket (such as Discord RPC when Discord is offline
+// or handshake fails) closes, fd 0 becomes free. When Mono subsequently opens a file (like
+// saving settings.json), the OS allocates fd 0, causing Mono's internal handle table to abort
+// with: "mono_fdhandle_insert: duplicate File fd 0".
+#import "fishhook.h"
+#import <stdarg.h>
+
+static int (*sys_orig_close)(int) = NULL;
+static int (*sys_orig_open)(const char *, int, ...) = NULL;
+
+static int sys_my_close(int fd)
+{
+    if (fd >= 0 && fd <= 2) {
+        NSLog(@"[FD_GUARD] Blocked attempt to close standard fd %d!", fd);
+        return 0; // Prevent standard descriptors from ever being closed!
+    }
+    if (sys_orig_close) {
+        return sys_orig_close(fd);
+    }
+    return close(fd);
+}
+
+static int sys_my_open(const char *path, int oflag, ...)
+{
+    mode_t mode = 0;
+    if (oflag & O_CREAT) {
+        va_list args;
+        va_start(args, oflag);
+        mode = (mode_t)va_arg(args, int);
+        va_end(args);
+    }
+
+    int fd;
+    if (sys_orig_open) {
+        fd = (oflag & O_CREAT) ? sys_orig_open(path, oflag, mode) : sys_orig_open(path, oflag);
+    } else {
+        fd = (oflag & O_CREAT) ? open(path, oflag, mode) : open(path, oflag);
+    }
+
+    if (fd >= 0 && fd <= 2) {
+        NSLog(@"[FD_GUARD] open(\"%s\") returned standard fd %d! Reallocating to safe fd...", path, fd);
+        int safe_fd = fcntl(fd, F_DUPFD, 3);
+        if (safe_fd >= 3) {
+            int devnull = (sys_orig_open ? sys_orig_open("/dev/null", O_RDWR) : open("/dev/null", O_RDWR));
+            if (devnull >= 0) {
+                dup2(devnull, fd);
+                if (devnull > 2) {
+                    if (sys_orig_close) sys_orig_close(devnull); else close(devnull);
+                }
+            }
+            NSLog(@"[FD_GUARD] Moved file \"%s\" from fd %d -> safe fd %d", path, safe_fd, fd);
+            return safe_fd;
+        }
+    }
+    return fd;
+}
+
+// Guard standard file descriptors 0, 1, 2 on startup.
+void MacSys_EnsureStandardDescriptors(void)
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            for (int fd = 0; fd <= 2; fd++) {
+                if (fcntl(fd, F_GETFL) < 0) {
+                    dup2(devnull, fd);
+                    NSLog(@"[MacSystem] Initial dup2 redirected closed fd %d to /dev/null", fd);
+                }
+            }
+            if (devnull > 2) close(devnull);
+        }
+
+        struct rebinding rebindings[] = {
+            {"close", (void *)sys_my_close, (void **)&sys_orig_close},
+            {"open",  (void *)sys_my_open,  (void **)&sys_orig_open}
+        };
+        rebind_symbols(rebindings, 2);
+        NSLog(@"[MacSystem] Standard fd guards + fishhook close/open hooks installed successfully.");
+    });
+}
+
+__attribute__((constructor))
+static void FixStandardFileDescriptors(void)
+{
+    MacSys_EnsureStandardDescriptors();
+}
 
 #if __has_include(<ServiceManagement/SMAppService.h>)
 #import <ServiceManagement/SMAppService.h>

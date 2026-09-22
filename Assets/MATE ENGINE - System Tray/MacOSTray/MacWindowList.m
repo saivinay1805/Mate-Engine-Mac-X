@@ -1,5 +1,20 @@
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <fcntl.h>
+#import <unistd.h>
+
+// Guard standard file descriptors 0, 1, 2 on startup.
+__attribute__((constructor))
+static void FixStandardFileDescriptors(void)
+{
+    int fd;
+    while ((fd = open("/dev/null", O_RDWR)) >= 0 && fd <= 2) {
+        // Keeps 0, 1, 2 safely occupied
+    }
+    if (fd > 2) {
+        close(fd);
+    }
+}
 
 typedef struct {
     int x, y, w, h;

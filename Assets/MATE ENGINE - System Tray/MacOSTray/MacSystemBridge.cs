@@ -125,6 +125,15 @@ public static class MacSystemBridge
         }
     }
 
+    [DllImport("MacSystem")]
+    public static extern void MacSys_EnsureStandardDescriptors();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void EnsureStandardDescriptorsOnInit()
+    {
+        try { MacSys_EnsureStandardDescriptors(); } catch { }
+    }
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoInstall()
     {

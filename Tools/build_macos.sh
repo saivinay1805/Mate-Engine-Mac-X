@@ -4,8 +4,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -n "${UNITY_BIN:-}" ]; then
   :
+elif [ -x "/Applications/Unity/Hub/Editor/6000.6.0f1/Unity.app/Contents/MacOS/Unity" ]; then
+  UNITY_BIN="/Applications/Unity/Hub/Editor/6000.6.0f1/Unity.app/Contents/MacOS/Unity"
 elif [ -x "/Applications/Unity/Hub/Editor/6000.4.8f1/Unity.app/Contents/MacOS/Unity" ]; then
   UNITY_BIN="/Applications/Unity/Hub/Editor/6000.4.8f1/Unity.app/Contents/MacOS/Unity"
+elif compgen -G "/Applications/Unity/Hub/Editor/*/Unity.app/Contents/MacOS/Unity" > /dev/null; then
+  UNITY_BIN="$(ls -d /Applications/Unity/Hub/Editor/*/Unity.app/Contents/MacOS/Unity | head -n 1)"
 elif [ -x "/Applications/Unity/Unity-6000.4.8f1/Unity.app/Contents/MacOS/Unity" ]; then
   UNITY_BIN="/Applications/Unity/Unity-6000.4.8f1/Unity.app/Contents/MacOS/Unity"
 else

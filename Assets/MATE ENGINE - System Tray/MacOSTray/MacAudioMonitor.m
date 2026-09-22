@@ -3,9 +3,99 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
+#import <fcntl.h>
+#import <unistd.h>
 #if __has_include(<ScreenCaptureKit/ScreenCaptureKit.h>)
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 #endif
+
+#import "fishhook.h"
+#import <stdarg.h>
+
+static int (*orig_close)(int) = NULL;
+static int (*orig_open)(const char *, int, ...) = NULL;
+
+static int my_close(int fd)
+{
+    if (fd >= 0 && fd <= 2) {
+        NSLog(@"[FD_GUARD] Blocked attempt to close standard fd %d!", fd);
+        return 0; // Prevent standard descriptors from ever being closed!
+    }
+    if (orig_close) {
+        return orig_close(fd);
+    }
+    return close(fd);
+}
+
+static int my_open(const char *path, int oflag, ...)
+{
+    mode_t mode = 0;
+    if (oflag & O_CREAT) {
+        va_list args;
+        va_start(args, oflag);
+        mode = (mode_t)va_arg(args, int);
+        va_end(args);
+    }
+
+    int fd;
+    if (orig_open) {
+        fd = (oflag & O_CREAT) ? orig_open(path, oflag, mode) : orig_open(path, oflag);
+    } else {
+        fd = (oflag & O_CREAT) ? open(path, oflag, mode) : open(path, oflag);
+    }
+
+    if (fd >= 0 && fd <= 2) {
+        NSLog(@"[FD_GUARD] open(\"%s\") returned standard fd %d! Reallocating to safe fd...", path, fd);
+        int safe_fd = fcntl(fd, F_DUPFD, 3);
+        if (safe_fd >= 3) {
+            int devnull = (orig_open ? orig_open("/dev/null", O_RDWR) : open("/dev/null", O_RDWR));
+            if (devnull >= 0) {
+                dup2(devnull, fd);
+                if (devnull > 2) {
+                    if (orig_close) orig_close(devnull); else close(devnull);
+                }
+            }
+            NSLog(@"[FD_GUARD] Moved file \"%s\" from fd %d -> safe fd %d", path, safe_fd, fd);
+            return safe_fd;
+        }
+    }
+    return fd;
+}
+
+// Guard standard file descriptors 0, 1, 2 on startup.
+void MacAudio_FixStandardFileDescriptors(void)
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            for (int fd = 0; fd <= 2; fd++) {
+                if (fcntl(fd, F_GETFL) < 0) {
+                    dup2(devnull, fd);
+                    NSLog(@"[MacAudioMonitor] Initial dup2 redirected closed fd %d to /dev/null", fd);
+                }
+            }
+            if (devnull > 2) close(devnull);
+        }
+
+        struct rebinding rebindings[] = {
+            {"close", (void *)my_close, (void **)&orig_close},
+            {"open",  (void *)my_open,  (void **)&orig_open}
+        };
+        rebind_symbols(rebindings, 2);
+        NSLog(@"[MacAudioMonitor] Standard fd guards + fishhook close/open hooks installed successfully.");
+    });
+}
+
+@interface MacAudioFDGuard : NSObject
+@end
+
+@implementation MacAudioFDGuard
++ (void)load
+{
+    MacAudio_FixStandardFileDescriptors();
+}
+@end
 
 // ─────────────────────────────────────────────────────────────────────────────
 // System-wide audio capture via ScreenCaptureKit (macOS 13+).
@@ -186,6 +276,7 @@ static void MacAudio_StopCapture(void)
 
 void MacAudio_Start(void)
 {
+    MacAudio_FixStandardFileDescriptors();
     if (gCaptureState == 2) return;
     // If we were marked unavailable only because permission was missing, retry
     // now that it may have been granted (System Settings → Privacy → Screen Recording).
@@ -232,6 +323,7 @@ int MacAudio_HasCapturePermission(void)
 // Returns the name of the default output device.
 int MacAudio_GetDefaultDeviceName(char* buf, int bufLen)
 {
+    MacAudio_FixStandardFileDescriptors();
     if (!buf || bufLen <= 0) return -1;
     buf[0] = '\0';
 

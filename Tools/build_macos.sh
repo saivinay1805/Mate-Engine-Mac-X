@@ -66,6 +66,12 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
   done
   echo "[build_macos] Universal architecture check OK"
 
+  # Patch bloom alpha multipliers in sharedassets0.assets to prevent dark oval artifact on macOS
+  if [ -f "$ROOT/Tools/patch_bloom_alpha.py" ] && [ -f "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets" ]; then
+    echo "[build_macos] Applying macOS bloom alpha fix to sharedassets0.assets..."
+    python3 "$ROOT/Tools/patch_bloom_alpha.py" "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets" || true
+  fi
+
   if [ "$PACKAGE_DMG" = "1" ]; then
     DMG="$LOG_DIR/MateEngineX.dmg"
     rm -f "$DMG"

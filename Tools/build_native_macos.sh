@@ -96,3 +96,33 @@ build_bundle MacAudioMonitor com.shinymoon.mateengine.macaudiomonitor 1 "$SRC_DI
 
 build_bundle MacWindowFix com.shinymoon.mateengine.macwindowfix 1.0 "$SRC_DIR/MacWindowFix.m" \
   -framework Cocoa
+
+build_executable() {
+  local name="$1"
+  local src="$2"
+  shift 2
+
+  local out="$ROOT/Assets/Plugins/MacOS/$name"
+  mkdir -p "$ROOT/Assets/Plugins/MacOS"
+
+  for arch in arm64 x86_64; do
+    "$CLANG" -arch "$arch" \
+      -isysroot "$SDK" \
+      -mmacosx-version-min=12.0 \
+      -fobjc-arc \
+      -O2 \
+      "$@" \
+      -o "$TMP/$name-$arch" \
+      "$src"
+  done
+
+  lipo -create "$TMP/$name-arm64" "$TMP/$name-x86_64" \
+    -output "$out"
+  chmod +x "$out"
+
+  echo "[build_native_macos] Built $out"
+}
+
+build_executable matesfbhelper "$SRC_DIR/matesfbhelper.m" \
+  -framework Cocoa
+

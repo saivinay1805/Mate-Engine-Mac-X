@@ -43,5 +43,12 @@ void MacWindowFix_Install(void)
         
         NSActivityOptions options = NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical;
         gActivity = [[NSProcessInfo processInfo] beginActivityWithOptions:options reason:@"High FPS requirement"];
+
+        // Ensure /tmp/matesfbhelper symlink exists for native file dialogs
+        NSString *helperPath = [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"Contents/MacOS/matesfbhelper"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:helperPath]) {
+            unlink("/tmp/matesfbhelper");
+            symlink([helperPath UTF8String], "/tmp/matesfbhelper");
+        }
     });
 }

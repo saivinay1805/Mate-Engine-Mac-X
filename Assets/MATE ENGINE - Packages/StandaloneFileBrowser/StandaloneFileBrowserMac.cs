@@ -18,6 +18,27 @@ namespace SFB {
                 : " default location (POSIX file \"" + EscapeAppleScript(directory) + "\")";
         }
 
+        private static string GetFilePickerExecutable() {
+            string helperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "matesfbhelper");
+            if (!File.Exists(helperPath)) {
+                try {
+                    string macosDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
+                    if (!string.IsNullOrEmpty(macosDir)) {
+                        string p = Path.Combine(macosDir, "matesfbhelper");
+                        if (File.Exists(p)) helperPath = p;
+                    }
+                }
+                catch { }
+            }
+            if (!File.Exists(helperPath) && File.Exists("/Applications/MateEngineX.app/Contents/MacOS/matesfbhelper")) {
+                helperPath = "/Applications/MateEngineX.app/Contents/MacOS/matesfbhelper";
+            }
+            if (!File.Exists(helperPath) && File.Exists("/tmp/matesfbhelper")) {
+                helperPath = "/tmp/matesfbhelper";
+            }
+            return File.Exists(helperPath) ? helperPath : "/usr/bin/osascript";
+        }
+
         private static string RunAppleScript(string script) {
             string tempFile = Path.Combine(
                 Path.GetTempPath(),
@@ -26,7 +47,7 @@ namespace SFB {
             try {
                 File.WriteAllText(tempFile, script, new UTF8Encoding(false));
                 var startInfo = new ProcessStartInfo {
-                    FileName = "/usr/bin/osascript",
+                    FileName = GetFilePickerExecutable(),
                     Arguments = "\"" + tempFile.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

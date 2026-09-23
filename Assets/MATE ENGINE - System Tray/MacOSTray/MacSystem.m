@@ -220,17 +220,30 @@ void MacSys_SetMenuCallbacks(MacMenuActionCallback action, MacMenuRebuildCallbac
     gMenuRebuildCallback = rebuild;
 }
 
+#include "default_icon_bytes.h"
+
 void MacSys_CreateStatusItem(const char *tooltip)
 {
     if (gStatusItem) return;
-    gStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
-    gStatusItem.button.title = tooltip && tooltip[0] ? [NSString stringWithUTF8String:tooltip] : @"MateEngine";
+    gStatusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
+    
+    NSData *iconData = [NSData dataWithBytes:kDefaultTrayIconPng length:sizeof(kDefaultTrayIconPng)];
+    NSImage *iconImage = [[NSImage alloc] initWithData:iconData];
+    if (iconImage) {
+        [iconImage setSize:NSMakeSize(18, 18)];
+        gStatusItem.button.image = iconImage;
+        gStatusItem.button.title = @"";
+    } else {
+        gStatusItem.button.title = tooltip && tooltip[0] ? [NSString stringWithUTF8String:tooltip] : @"MateEngine";
+    }
+    
     gStatusItem.button.toolTip = tooltip && tooltip[0] ? [NSString stringWithUTF8String:tooltip] : @"MateEngine";
     gStatusMenu = [[NSMenu alloc] init];
     gMenuTarget = [[MacSysMenuTarget alloc] init];
     gMenuDelegate = [[MacSysMenuDelegate alloc] init];
     gStatusMenu.delegate = gMenuDelegate;
     gStatusItem.menu = gStatusMenu;
+    NSLog(@"[MacSystem] Created status item successfully with official icon!");
 }
 
 void MacSys_SetStatusItemIcon(const uint8_t *png, int pngLen)
@@ -239,8 +252,10 @@ void MacSys_SetStatusItemIcon(const uint8_t *png, int pngLen)
     NSData *data = [NSData dataWithBytes:png length:(NSUInteger)pngLen];
     NSImage *image = [[NSImage alloc] initWithData:data];
     if (!image) return;
+    [image setSize:NSMakeSize(18, 18)];
     gStatusItem.button.image = image;
     gStatusItem.button.imagePosition = NSImageOnly;
+    NSLog(@"[MacSystem] Updated status item icon successfully!");
 }
 
 void MacSys_RemoveStatusItem(void)
@@ -265,6 +280,7 @@ void MacSys_ResetMenu(void)
 void MacSys_AddMenuItem(const char *title, int actionId)
 {
     if (!gStatusMenu || !title) return;
+    NSLog(@"[MacSystem] Added menu item: %s (id=%d)", title, actionId);
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:title]
                                                  action:@selector(macSysMenuClicked:)
                                           keyEquivalent:@""];

@@ -65,6 +65,7 @@ public class SettingsHandlerToggles : MonoBehaviour
         enableLocomotionToggle?.onValueChanged.AddListener(OnEnableLocomotionChanged);
         LoadSettings();
         ApplySettings();
+        LocomotionHelper.EnsureLocomotionToggle(this);
     }
 
     #region Toggle Callbacks

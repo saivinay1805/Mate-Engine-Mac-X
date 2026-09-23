@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -106,8 +106,14 @@ public class SystemTray : MonoBehaviour
         context.Add((toggleLabel, () =>
         {
             if (app != null) app.ToggleAppMode();
-        }
-        ));
+        }));
+
+        bool walkingOn = SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null && SaveLoadHandler.Instance.data.enableLocomotion;
+        string walkingLabel = (walkingOn ? "✔ " : "✖ ") + "Walking Mode (Roaming)";
+        context.Add((walkingLabel, () =>
+        {
+            LocomotionHelper.ToggleWalkingMode(this);
+        }));
 
         context.Add(("Quit MateEngine", QuitApp));
         return context;

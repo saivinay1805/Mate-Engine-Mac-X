@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 public class ShadowBloomManager : MonoBehaviour
 {
@@ -35,6 +37,355 @@ public class ShadowBloomManager : MonoBehaviour
                 Debug.Log($"[ShadowBloomManager] Bloom is {(bloomOn ? "ON" : "OFF")} -> Shadow enabled: {shouldShow}");
             }
         }
+    }
+}
+
+public static class LocomotionHelper
+{
+    public static void EnsureLocomotionToggle(SettingsHandlerToggles sht)
+    {
+        try
+        {
+            if (sht == null) return;
+            if (sht.enableMinecraftMessagesToggle == null) return;
+
+            Transform mcToggleTr = sht.enableMinecraftMessagesToggle.transform;
+            Transform mcCategory = mcToggleTr;
+            while (mcCategory != null && mcCategory.parent != null && mcCategory.parent.name != "Main Menu")
+            {
+                mcCategory = mcCategory.parent;
+            }
+            if (mcCategory == null || mcCategory.parent == null) return;
+
+            RectTransform srcRt = mcCategory.GetComponent<RectTransform>();
+
+            Transform existing = mcCategory.parent.Find("= EXPERIMENTAL");
+            GameObject expCategory;
+            if (existing != null)
+            {
+                expCategory = existing.gameObject;
+            }
+            else
+            {
+                expCategory = UnityEngine.Object.Instantiate(mcCategory.gameObject, mcCategory.parent);
+                expCategory.name = "= EXPERIMENTAL";
+                expCategory.transform.SetSiblingIndex(mcCategory.GetSiblingIndex() + 1);
+            }
+            expCategory.SetActive(true);
+
+            Transform lockTr = expCategory.transform.Find("LOCK_MC");
+            if (lockTr != null) lockTr.gameObject.SetActive(false);
+
+            RectTransform rt = expCategory.GetComponent<RectTransform>();
+            if (rt != null && srcRt != null)
+            {
+                rt.anchorMin = srcRt.anchorMin;
+                rt.anchorMax = srcRt.anchorMax;
+                rt.pivot = srcRt.pivot;
+                rt.sizeDelta = srcRt.sizeDelta;
+                rt.anchoredPosition = new Vector2(srcRt.anchoredPosition.x, srcRt.anchoredPosition.y - 292f);
+            }
+
+            foreach (var mb in expCategory.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (mb != null && mb.GetType().Name == "LocalizeStringEvent")
+                    mb.enabled = false;
+            }
+
+            Transform steamMc = expCategory.transform.Find("STEAM_MC");
+            Transform infoTr = steamMc != null ? steamMc.Find("Info") : null;
+            Transform titleTr = steamMc != null ? steamMc.Find("TITLE") : null;
+
+            if (titleTr != null)
+            {
+                var tmp = titleTr.GetComponent<TextMeshProUGUI>();
+                if (tmp != null) tmp.text = "EXPERIMENTAL FEATURES";
+                RectTransform trRt = titleTr.GetComponent<RectTransform>();
+                if (trRt != null) trRt.anchoredPosition = new Vector2(trRt.anchoredPosition.x, -50f);
+            }
+
+            Toggle t = expCategory.GetComponentInChildren<Toggle>(true);
+            if (t != null)
+            {
+                t.gameObject.SetActive(true);
+                t.onValueChanged.RemoveAllListeners();
+                sht.enableLocomotionToggle = t;
+
+                RectTransform tRt = t.GetComponent<RectTransform>();
+                if (tRt != null)
+                {
+                    tRt.anchoredPosition = new Vector2(tRt.anchoredPosition.x, -105f);
+                }
+
+                foreach (var tmp in t.GetComponentsInChildren<TextMeshProUGUI>(true))
+                {
+                    if (tmp != null) tmp.text = "AVATAR CAN WALK AROUND";
+                }
+
+                bool currentLoco = SaveLoadHandler.Instance != null && 
+                                   SaveLoadHandler.Instance.data != null && 
+                                   SaveLoadHandler.Instance.data.enableLocomotion;
+                t.SetIsOnWithoutNotify(currentLoco);
+
+                t.onValueChanged.AddListener((bool val) =>
+                {
+                    var slh = SaveLoadHandler.Instance;
+                    if (slh != null && slh.data != null)
+                    {
+                        slh.data.enableLocomotion = val;
+                        slh.SaveToDisk();
+                    }
+                    var locos = Resources.FindObjectsOfTypeAll<AvatarLocomotionController>();
+                    for (int i = 0; i < locos.Length; i++)
+                    {
+                        if (locos[i] != null)
+                        {
+                            locos[i].EnableLocomotion = val;
+                            locos[i].DrawBlockingDebug = false;
+                            if (!val) locos[i].SendMessage("StopWalking", SendMessageOptions.DontRequireReceiver);
+                        }
+                    }
+                    if (!val)
+                    {
+                        var animators = Resources.FindObjectsOfTypeAll<Animator>();
+                        for (int a = 0; a < animators.Length; a++)
+                        {
+                            if (animators[a] != null)
+                            {
+                                try
+                                {
+                                    animators[a].SetBool("WalkLeft", false);
+                                    animators[a].SetBool("WalkRight", false);
+                                }
+                                catch {}
+                            }
+                        }
+                    }
+                    var tray = UnityEngine.Object.FindAnyObjectByType<SystemTray>();
+                    if (tray != null)
+                    {
+                        tray.SendMessage("RebuildMacMenu", SendMessageOptions.DontRequireReceiver);
+                    }
+                });
+            }
+
+            if (infoTr != null)
+            {
+                var tmp = infoTr.GetComponent<TextMeshProUGUI>();
+                if (tmp != null)
+                {
+                    tmp.text = "LET THE AVATAR RANDOMLY WALK EITHER TO THE RIGHT OR LEFT ON YOUR SCREEN. THIS IS AN EXPERIMENTAL FEATURE THAT IS STILL UNDER DEVELOPMENT. BUGS MAY OCCUR.";
+                    tmp.fontSize = 11f;
+                    tmp.enableAutoSizing = false;
+                    tmp.fontStyle = FontStyles.Normal;
+                    tmp.color = new Color(1.0f, 0.68f, 0.72f, 1.0f);
+                    tmp.lineSpacing = 0f;
+                }
+                RectTransform infoRt = infoTr.GetComponent<RectTransform>();
+                if (infoRt != null)
+                {
+                    infoRt.anchoredPosition = new Vector2(infoRt.anchoredPosition.x, -155f);
+                    infoRt.sizeDelta = new Vector2(410f, 55f);
+                }
+            }
+
+            foreach (var btn in expCategory.GetComponentsInChildren<Button>(true))
+            {
+                btn.gameObject.SetActive(false);
+            }
+
+            Debug.Log("[LocomotionHelper] Created EXPERIMENTAL FEATURES section successfully!");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[LocomotionHelper] EnsureLocomotionToggle error: " + ex.Message);
+        }
+    }
+
+    public static void ToggleWalkingMode(MonoBehaviour tray)
+    {
+        try
+        {
+            var slh = SaveLoadHandler.Instance;
+            if (slh != null && slh.data != null)
+            {
+                bool next = !slh.data.enableLocomotion;
+                slh.data.enableLocomotion = next;
+                slh.SaveToDisk();
+                Debug.Log("[LocomotionHelper] Toggled enableLocomotion to: " + next);
+
+                var locos = Resources.FindObjectsOfTypeAll<AvatarLocomotionController>();
+                for (int i = 0; i < locos.Length; i++)
+                {
+                    if (locos[i] != null)
+                    {
+                        locos[i].EnableLocomotion = next;
+                        locos[i].DrawBlockingDebug = false;
+                        if (!next)
+                        {
+                            locos[i].SendMessage("StopWalking", SendMessageOptions.DontRequireReceiver);
+                        }
+                    }
+                }
+
+                if (!next)
+                {
+                    var animators = Resources.FindObjectsOfTypeAll<Animator>();
+                    for (int a = 0; a < animators.Length; a++)
+                    {
+                        if (animators[a] != null)
+                        {
+                            try
+                            {
+                                animators[a].SetBool("WalkLeft", false);
+                                animators[a].SetBool("WalkRight", false);
+                            }
+                            catch {}
+                        }
+                    }
+                }
+
+                var sht = UnityEngine.Object.FindAnyObjectByType<SettingsHandlerToggles>();
+                if (sht != null && sht.enableLocomotionToggle != null)
+                {
+                    sht.enableLocomotionToggle.SetIsOnWithoutNotify(next);
+                }
+            }
+            if (tray != null)
+            {
+                tray.SendMessage("RebuildMacMenu", SendMessageOptions.DontRequireReceiver);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[LocomotionHelper] ToggleWalkingMode error: " + ex.Message);
+        }
+    }
+
+    public static void AttachLocomotion()
+    {
+        try
+        {
+            var awh = UnityEngine.Object.FindAnyObjectByType<AvatarWindowHandler>();
+            if (awh != null)
+            {
+                var go = awh.gameObject;
+                var alc = go.GetComponent<AvatarLocomotionController>();
+                if (alc == null)
+                {
+                    alc = go.AddComponent<AvatarLocomotionController>();
+                    bool enabled = SaveLoadHandler.Instance != null && 
+                                   SaveLoadHandler.Instance.data != null && 
+                                   SaveLoadHandler.Instance.data.enableLocomotion;
+                    alc.EnableLocomotion = enabled;
+                    alc.DrawBlockingDebug = false;
+                    Debug.Log("[LocomotionHelper] Attached AvatarLocomotionController with EnableLocomotion=" + enabled);
+                }
+                else
+                {
+                    alc.DrawBlockingDebug = false;
+                }
+            }
+
+            if (SettingsScrollWatcher.Instance == null)
+            {
+                var watcherGo = new GameObject("MateSettingsScrollWatcher");
+                watcherGo.AddComponent<SettingsScrollWatcher>();
+                UnityEngine.Object.DontDestroyOnLoad(watcherGo);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[LocomotionHelper] AttachLocomotion error: " + ex.Message);
+        }
+    }
+}
+
+public class SettingsScrollWatcher : MonoBehaviour
+{
+    public static SettingsScrollWatcher Instance;
+    private ScrollRect sr;
+    private GameObject expCategory;
+    private bool loggedFound = false;
+
+    void Awake()
+    {
+        if (Instance == null) Instance = this;
+    }
+
+    private void FindMainScrollRect()
+    {
+        var allSrs = Resources.FindObjectsOfTypeAll<ScrollRect>();
+        foreach (var s in allSrs)
+        {
+            if (s != null && s.content != null && s.gameObject.name == "Main Menu" && s.content.name == "Content")
+            {
+                sr = s;
+                if (!loggedFound)
+                {
+                    loggedFound = true;
+                    Debug.Log("[SettingsScrollWatcher] Found Main Menu ScrollRect: " + s.name);
+                }
+                break;
+            }
+        }
+    }
+
+    void Update()
+    {
+        if (UnityEngine.Object.FindAnyObjectByType<AvatarLocomotionController>() == null)
+        {
+            LocomotionHelper.AttachLocomotion();
+        }
+        MaintainSettings();
+    }
+
+    void LateUpdate()
+    {
+        MaintainSettings();
+    }
+
+    private void MaintainSettings()
+    {
+        try
+        {
+            if (sr == null || sr.content == null) FindMainScrollRect();
+            if (sr != null && sr.content != null)
+            {
+                var cRt = sr.content;
+                if (cRt.sizeDelta.y < 5750f)
+                {
+                    cRt.sizeDelta = new Vector2(cRt.sizeDelta.x, 5750f);
+                }
+
+                if (expCategory == null)
+                {
+                    var all = cRt.GetComponentsInChildren<Transform>(true);
+                    foreach (var t in all)
+                    {
+                        if (t.name == "= EXPERIMENTAL")
+                        {
+                            expCategory = t.gameObject;
+                            break;
+                        }
+                    }
+                    if (expCategory == null)
+                    {
+                        var shts = Resources.FindObjectsOfTypeAll<SettingsHandlerToggles>();
+                        if (shts != null && shts.Length > 0 && shts[0] != null)
+                        {
+                            LocomotionHelper.EnsureLocomotionToggle(shts[0]);
+                        }
+                    }
+                }
+
+                if (expCategory != null && !expCategory.activeSelf)
+                {
+                    expCategory.SetActive(true);
+                }
+            }
+        }
+        catch {}
     }
 }
 
@@ -116,6 +467,46 @@ public static class BuiltInDanceHelper
         }
 
         initialized = true;
+    }
+
+    public static void ToggleWalkingMode(object tray)
+    {
+        LocomotionHelper.ToggleWalkingMode(tray as MonoBehaviour);
+    }
+
+    public static void AddWalkingMenuItem(SystemTray tray, List<(string, Action)> context)
+    {
+        try
+        {
+            bool walkingOn = SaveLoadHandler.Instance != null && 
+                             SaveLoadHandler.Instance.data != null && 
+                             SaveLoadHandler.Instance.data.enableLocomotion;
+            string label = (walkingOn ? "✔ " : "✖ ") + "Walking Mode (Roaming)";
+            context.Add((label, () => LocomotionHelper.ToggleWalkingMode(tray)));
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BuiltInDanceHelper] AddWalkingMenuItem error: " + ex.Message);
+        }
+    }
+
+    public static void InitOnStartup()
+    {
+        try
+        {
+            LocomotionHelper.AttachLocomotion();
+            if (UnityEngine.Object.FindAnyObjectByType<ShadowBloomManager>() == null)
+            {
+                var sbmGo = new GameObject("MateShadowBloomManager");
+                sbmGo.AddComponent<ShadowBloomManager>();
+                UnityEngine.Object.DontDestroyOnLoad(sbmGo);
+            }
+            Debug.Log("[BuiltInDanceHelper] InitOnStartup executed successfully!");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BuiltInDanceHelper] InitOnStartup error: " + ex.Message);
+        }
     }
 
     public static void AddBuiltInDances(object handler)
@@ -204,6 +595,8 @@ public static class BuiltInDanceHelper
             {
                 mb.gameObject.AddComponent<ShadowBloomManager>();
             }
+
+            LocomotionHelper.AttachLocomotion();
 
             InitReflection(handler.GetType());
             if (f_entries == null || f_animator == null) return;

@@ -11,5 +11,6 @@ public class MacStartupLoader : MonoBehaviour
     static void OnSceneLoaded()
     {
         // Startup load buttons disabled: MateEngineX launches directly with default/saved avatar
+        BuiltInDanceHelper.InitOnStartup();
     }
 }

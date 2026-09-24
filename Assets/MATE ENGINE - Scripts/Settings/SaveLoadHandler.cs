@@ -308,6 +308,12 @@ public class SaveLoadHandler : MonoBehaviour
             public long targetUnixTimestamp;
             public bool isRunning;
             public int remainingSeconds;
+
+            public int hours;
+            public int minutes;
+            public int presetSeconds;
+            public bool running;
+            public long targetUnix;
         }
 
         public List<TimerEntry> timers = new List<TimerEntry>();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -124,8 +124,13 @@ namespace Poi.Tools
         /// <param name="path"></param>
         public static void PingAssetAtPath(string path)
         {
+#if UNITY_6000_0_OR_NEWER
+            var inst = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path).GetEntityId();
+            EditorGUIUtility.PingObject(inst);
+#else
             var inst = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path).GetInstanceID();
             EditorGUIUtility.PingObject(inst);
+#endif
         }
 
         public static void DrawWithLabelWidth(float width, Action action)

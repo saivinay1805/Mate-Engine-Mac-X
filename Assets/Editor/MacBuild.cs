@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
@@ -77,10 +78,21 @@ public static class MacBuild
         string fullOutput = Path.GetFullPath(output ?? DefaultOutput);
         Directory.CreateDirectory(Path.GetDirectoryName(fullOutput));
 
-        PlayerSettings.SetArchitecture(
-            UnityEditor.Build.NamedBuildTarget.Standalone,
-            (int)UnityEditor.Build.OSArchitecture.x64ARM64);
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneOSX);
+        string archArg = GetCommandLineArg("-architecture", "universal").ToLowerInvariant();
+        if (archArg == "x64" || archArg == "x86_64")
+        {
+            UnityEditor.OSXStandalone.UserBuildSettings.architecture = UnityEditor.Build.OSArchitecture.x64;
+        }
+        else if (archArg == "arm64")
+        {
+            UnityEditor.OSXStandalone.UserBuildSettings.architecture = UnityEditor.Build.OSArchitecture.ARM64;
+        }
+        else
+        {
+            UnityEditor.OSXStandalone.UserBuildSettings.architecture = UnityEditor.Build.OSArchitecture.x64ARM64;
+        }
+        Debug.Log($"[MacBuild] Target architecture set to: {UnityEditor.OSXStandalone.UserBuildSettings.architecture}");
 
         string[] scenes = EditorBuildSettings.scenes
             .Where(scene => scene.enabled)
@@ -103,6 +115,44 @@ public static class MacBuild
         };
 
         return BuildPipeline.BuildPlayer(playerOptions);
+    }
+
+    private static void DisableBurstForUniversalBuild()
+    {
+        try
+        {
+            EditorPrefs.SetBool("BurstCompilation", false);
+            EditorPrefs.SetBool("BurstSafetyChecks", false);
+
+            var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == "UnityEditor.BurstModule");
+            if (asm != null)
+            {
+                var settingsType = asm.GetType("Unity.Burst.Editor.BurstPlatformAotSettings");
+                if (settingsType != null)
+                {
+                    var getOrCreate = settingsType.GetMethod("GetOrCreateSettings", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    var settings = getOrCreate?.Invoke(null, new object[] { BuildTargetGroup.Standalone });
+                    if (settings != null)
+                    {
+                        var prop = settingsType.GetProperty("EnableBurstCompilation");
+                        prop?.SetValue(settings, false);
+                        Debug.Log("[MacBuild] Disabled BurstPlatformAotSettings.EnableBurstCompilation.");
+                    }
+                }
+
+                var editorOptionsType = asm.GetType("Unity.Burst.Editor.BurstEditorOptions");
+                if (editorOptionsType != null)
+                {
+                    var prop = editorOptionsType.GetProperty("EnableBurstCompilation", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    prop?.SetValue(null, false);
+                    Debug.Log("[MacBuild] Disabled BurstEditorOptions.EnableBurstCompilation.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[MacBuild] Exception while disabling Burst: " + ex.Message);
+        }
     }
 
     private static string GetCommandLineArg(string name, string fallback)

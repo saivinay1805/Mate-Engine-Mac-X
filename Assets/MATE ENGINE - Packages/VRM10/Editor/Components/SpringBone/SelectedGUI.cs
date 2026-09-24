@@ -81,7 +81,11 @@ namespace UniVRM10
 
                 if (isFocused)
                 {
+#if UNITY_6000_0_OR_NEWER
+                    var id = element.objectReferenceValue.GetEntityId().GetHashCode();
+#else
                     var id = element.objectReferenceValue.GetInstanceID();
+#endif
                     if (id != VRM10SpringBoneCollider.SelectedGuid)
                     {
                         VRM10SpringBoneCollider.SelectedGuid = id;

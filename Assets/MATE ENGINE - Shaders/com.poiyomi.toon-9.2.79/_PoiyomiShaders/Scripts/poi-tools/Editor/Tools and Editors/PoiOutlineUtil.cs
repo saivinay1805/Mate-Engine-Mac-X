@@ -142,7 +142,11 @@ namespace Poi.Tools
             foreach(SkinnedMeshRenderer skinnedMeshRenderer in skinnedMeshRenderers)
             {
                 EditorGUILayout.LabelField(skinnedMeshRenderer.gameObject.name, EditorStyles.boldLabel);
+#if UNITY_6000_0_OR_NEWER
+                int id = skinnedMeshRenderer.gameObject.GetEntityId().GetHashCode();
+#else
                 int id = skinnedMeshRenderer.gameObject.GetInstanceID();
+#endif
                 Mesh sharedMesh = skinnedMeshRenderer.sharedMesh;
                 Material[] materials = skinnedMeshRenderer.sharedMaterials;
                 EditorGUI.indentLevel++;
@@ -158,7 +162,11 @@ namespace Poi.Tools
                     continue;
                 }
                 EditorGUILayout.LabelField(meshRenderer.gameObject.name, EditorStyles.boldLabel);
+#if UNITY_6000_0_OR_NEWER
+                int id = meshRenderer.gameObject.GetEntityId().GetHashCode();
+#else
                 int id = meshRenderer.gameObject.GetInstanceID();
+#endif
                 Mesh sharedMesh = meshFilter.sharedMesh;
                 Material[] materials = meshRenderer.sharedMaterials;
                 EditorGUI.indentLevel++;
@@ -311,7 +319,11 @@ namespace Poi.Tools
                     continue;
                 }
 
+#if UNITY_6000_0_OR_NEWER
+                int id = skinnedMeshRenderer.gameObject.GetEntityId().GetHashCode();
+#else
                 int id = skinnedMeshRenderer.gameObject.GetInstanceID();
+#endif
                 Mesh sharedMesh = skinnedMeshRenderer.sharedMesh;
                 Mesh bakedMesh = bakedSkinnedMeshRenderer.sharedMesh;
                 if(bakedMesh == null || !bakedMesh.name.Contains("(Clone)"))
@@ -349,7 +361,11 @@ namespace Poi.Tools
                     continue;
                 }
 
+#if UNITY_6000_0_OR_NEWER
+                int id = meshRenderer.gameObject.GetEntityId().GetHashCode();
+#else
                 int id = meshRenderer.gameObject.GetInstanceID();
+#endif
                 Mesh sharedMesh = meshFilter.sharedMesh;
                 Mesh bakedMesh = bakedMeshFilter.sharedMesh;
                 if(bakedMesh == null || !bakedMesh.name.Contains("(Clone)"))

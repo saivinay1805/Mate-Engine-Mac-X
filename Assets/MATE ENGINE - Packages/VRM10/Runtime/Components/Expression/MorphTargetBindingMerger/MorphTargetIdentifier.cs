@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UniGLTF;
 using UnityEngine;
@@ -29,7 +29,11 @@ namespace UniVRM10
         public MorphTargetIdentifier(SkinnedMeshRenderer targetRenderer, int targetBlendShapeIndex)
         {
             TargetRenderer = targetRenderer;
+#if UNITY_6000_0_OR_NEWER
+            TargetRendererInstanceId = targetRenderer.GetEntityId().GetHashCode();
+#else
             TargetRendererInstanceId = targetRenderer.GetInstanceID();
+#endif
             TargetBlendShapeIndex = targetBlendShapeIndex;
         }
 

@@ -110,3 +110,4 @@ UserSettings/
 # Addressables build state (regenerated on every build)
 Assets/AddressableAssetsData/**/addressables_content_state.bin
 Assets/AddressableAssetsData/**/addressables_content_state.bin.meta
+LLMUnityBuild/

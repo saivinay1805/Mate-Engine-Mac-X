@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -300,13 +300,30 @@ namespace Thry.ThryEditor.ShaderTranslations
         {
             // This allows you to name your asset before creating it
             ProjectWindowUtil.StartNameEditingIfProjectWindowExists(
+#if UNITY_6000_0_OR_NEWER
+               default(UnityEngine.EntityId),
+#else
                0,
+#endif
                CreateInstance<DoCreateNewTranslationDefinition>(),
                "New Translation Definition.asset",
                EditorGUIUtility.IconContent("ScriptableObject Icon").image as Texture2D,
                null);
         }
 
+#if UNITY_6000_0_OR_NEWER
+        class DoCreateNewTranslationDefinition : UnityEditor.ProjectWindowCallback.AssetCreationEndAction
+        {
+            public override void Action(UnityEngine.EntityId instanceId, string pathName, string resourceFile)
+            {
+                var translator = CreateInstance<ShaderTranslator>();
+                translator.name = Path.GetFileNameWithoutExtension(pathName);
+                AssetDatabase.CreateAsset(translator, pathName);
+                Selection.activeObject = translator;
+                TranslationDefinitions.Add(translator);
+            }
+        }
+#else
         class DoCreateNewTranslationDefinition : EndNameEditAction
         {
             public override void Action(int instanceId, string pathName, string resourceFile)
@@ -318,5 +335,6 @@ namespace Thry.ThryEditor.ShaderTranslations
                 TranslationDefinitions.Add(translator);
             }
         }
+#endif
     }
 }

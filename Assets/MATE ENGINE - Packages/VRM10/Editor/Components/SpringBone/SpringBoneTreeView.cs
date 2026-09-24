@@ -1,3 +1,4 @@
+#if !UNITY_6000_0_OR_NEWER
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
@@ -302,3 +303,4 @@ namespace UniVRM10
         }
     }
 }
+#endif

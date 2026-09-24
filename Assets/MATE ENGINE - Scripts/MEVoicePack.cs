@@ -396,7 +396,7 @@ public class MEVoicePack : MonoBehaviour
         foreach (var b in bots)
         {
             if (!b) continue;
-            var src = b.streamAudioSource;
+            var src = b.GetComponent<AudioSource>() ?? b.GetComponentInChildren<AudioSource>();
             if (!src) continue;
             if (chatBotStreamClip)
             {

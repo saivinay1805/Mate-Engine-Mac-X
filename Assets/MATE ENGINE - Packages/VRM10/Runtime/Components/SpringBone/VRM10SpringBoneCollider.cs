@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 namespace UniVRM10
@@ -32,7 +32,11 @@ namespace UniVRM10
 
         public static int SelectedGuid;
 
+#if UNITY_6000_0_OR_NEWER
+        public bool IsSelected => GetEntityId().GetHashCode() == SelectedGuid;
+#else
         public bool IsSelected => GetInstanceID() == SelectedGuid;
+#endif
 
         public void OnValidate()
         {

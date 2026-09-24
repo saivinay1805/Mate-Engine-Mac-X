@@ -34,9 +34,9 @@ public class AvatarWindowHandler : MonoBehaviour
     bool wasSitting;
     [Header("Seat Alignment")]
     [Range(-256f, 256f)] public float seatOffsetPx = 0f;
-    [Range(-1.0f, 1.0f)] public float windowSitYOffset = -0.02f;
-    // "auto" = both edges, "up" = top edge only, "down" = bottom edge only
-    public string windowSitEdge = "auto";
+    [Range(-1.0f, 1.0f)] public float windowSitYOffset = 0f;
+    // "up" = top edge only (original behavior), "auto" = both edges, "down" = bottom edge only
+    public string windowSitEdge = "up";
     [Header("Occluder")]
     public Material occluderMaterial;
     public Camera targetCamera;
@@ -53,8 +53,6 @@ public class AvatarWindowHandler : MonoBehaviour
     public float targetZSensitivity = 3.0f;
     public float targetZMin = 0.05f;
     public float targetZMax = 10f;
-    [Tooltip("Shifts the cliff occluder plane forward/back from the character's seat depth. Positive moves it deeper (character shows more), negative closer (more of the character's back / hair is occluded below the seat line).")]
-    [Range(-1f, 1f)] public float windowSitCliffOffset = -0.12f;
     [Header("Snap Smoothing")]
     public bool enableSnapSmoothing = true;
     [Range(0.01f, 0.5f)] public float snapSmoothingTime = 0.12f;
@@ -138,8 +136,6 @@ public class AvatarWindowHandler : MonoBehaviour
         animator = GetComponent<Animator>();
         controller = GetComponent<AvatarAnimatorController>();
         if (targetCamera == null) targetCamera = Camera.main;
-        if (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data.windowSitCliffOffsetSet)
-            windowSitCliffOffset = SaveLoadHandler.Instance.data.windowSitCliffOffset;
         CacheRigRefs(); BuildBlockSitCache(); EnsureOccluderRoot();
         if (occluderMaterial != null) _occluderSharedMat = new Material(occluderMaterial);
         if (precreateQuadsOnStart)
@@ -155,53 +151,6 @@ public class AvatarWindowHandler : MonoBehaviour
         _lastSnapTopY = int.MinValue;
         cachedWindows.Capacity = Mathf.Max(cachedWindows.Capacity, 128);
         activeOccluders.Capacity = Mathf.Max(activeOccluders.Capacity, maxOtherQuads);
-    }
-    // Built-in runtime fine-tuning for the cliff occluder plane. Holds Command and
-    // presses [ or ] (also -/= for coarse steps) to move the plane forward/back in
-    // real time; the value persists across restarts via SaveLoadHandler.
-    void HandleCliffTuningHotkey()
-    {
-        bool cmd = Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand);
-        if (!cmd) return;
-        float delta = 0f;
-        if (Input.GetKeyDown(KeyCode.LeftBracket)) delta = -0.02f;
-        else if (Input.GetKeyDown(KeyCode.RightBracket)) delta = 0.02f;
-        else if (Input.GetKeyDown(KeyCode.Minus)) delta = -0.1f;
-        else if (Input.GetKeyDown(KeyCode.Equals)) delta = 0.1f;
-        if (delta == 0f) return;
-        windowSitCliffOffset = Mathf.Clamp(windowSitCliffOffset + delta, -1f, 1f);
-        UnityEngine.Debug.Log($"[WindowSit] Cliff offset = {windowSitCliffOffset:0.00}  (⌘+[ / ⌘+] to tune)");
-        if (SaveLoadHandler.Instance != null)
-        {
-            SaveLoadHandler.Instance.data.windowSitCliffOffset = windowSitCliffOffset;
-            SaveLoadHandler.Instance.data.windowSitCliffOffsetSet = true;
-            SaveLoadHandler.Instance.SaveToDisk();
-        }
-    }
-    // Built-in runtime fine-tuning for the character's overall seat height.
-    // Adjusts windowSitYOffset (the seat point's position on the character body),
-    // so the character moves up/down while the occluder's horizontal line stays
-    // pinned to the window edge. Holds Command and presses ↑/↓ (fine) or
-    // Shift+↑/↓ (coarse); persists via settings (same value the settings-menu
-    // slider drives).
-    void HandleSeatHeightHotkey()
-    {
-        bool cmd = Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand);
-        if (!cmd) return;
-        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        float delta = 0f;
-        // Increasing windowSitYOffset raises the seat point on the body, which
-        // makes the whole character sit lower; decreasing raises the character.
-        if (Input.GetKeyDown(KeyCode.UpArrow)) delta = shift ? -0.1f : -0.02f;
-        else if (Input.GetKeyDown(KeyCode.DownArrow)) delta = shift ? 0.1f : 0.02f;
-        if (delta == 0f) return;
-        windowSitYOffset = Mathf.Clamp(windowSitYOffset + delta, -1f, 1f);
-        UnityEngine.Debug.Log($"[WindowSit] Seat height = {windowSitYOffset:0.00}  (⌘+↑ / ⌘+↓ to tune)");
-        if (SaveLoadHandler.Instance != null)
-        {
-            SaveLoadHandler.Instance.data.windowSitYOffset = windowSitYOffset;
-            SaveLoadHandler.Instance.SaveToDisk();
-        }
     }
     void OnDisable()
     {
@@ -281,9 +230,6 @@ public class AvatarWindowHandler : MonoBehaviour
         bool isWindowSitNow = animator.GetBool("isWindowSit");
         if (isWindowSitNow && !wasSitting) animator.SetFloat(windowSitIndexParam, UnityEngine.Random.Range(0, totalWindowSitAnimations));
         wasSitting = isWindowSitNow;
-
-        HandleCliffTuningHotkey();
-        HandleSeatHeightHotkey();
 
 #if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
         // On macOS, track window frame-synchronously when dragging or sitting on a window to eliminate
@@ -424,10 +370,7 @@ public class AvatarWindowHandler : MonoBehaviour
 #endif
                 if (gotRect)
                 {
-                    int trTop    = tr.Top;
-                    int trBottom = tr.Bottom;
-                    int snapEdgeY = (windowSitEdge == "down") ? trBottom : trTop;
-                    CalibrateSeatAnchorToDesktopY(snapEdgeY + seatOffsetPx);
+                    CalibrateSeatAnchorToDesktopY(tr.Top + seatOffsetPx);
                     if (ComputeSeatDesktop(out float px2, out _))
                     {
                         float w = Mathf.Max(1, tr.Right - tr.Left);
@@ -648,18 +591,9 @@ public class AvatarWindowHandler : MonoBehaviour
         {
             var win = cachedWindows[i];
             if (win.hwnd == unityHWND) continue;
-            int left = win.rect.Left, right = win.rect.Right;
-            int top    = win.rect.Top;
-            int bottom = win.rect.Bottom;
+            int left = win.rect.Left, right = win.rect.Right, top = win.rect.Top;
             if (!(px >= left && px <= right)) continue;
-            bool checkTop    = windowSitEdge != "down";
-            bool checkBottom = windowSitEdge != "up";
-            bool nearTop    = checkTop    && Mathf.Abs(py - top)    <= sprF;
-            bool nearBottom = checkBottom && Mathf.Abs(py - bottom) <= sprF;
-            if (!nearTop && !nearBottom) continue;
-            int snapEdge = (nearTop && nearBottom)
-                ? (Mathf.Abs(py - top) <= Mathf.Abs(py - bottom) ? top : bottom)
-                : (nearTop ? top : bottom);
+            if (Mathf.Abs(py - top) > sprF) continue;
             if (IsSameProcessWindow(win.hwnd)) continue;
             if (IsOccludedByHigherWindowsAtPoint(win.hwnd, Mathf.RoundToInt(px), Mathf.RoundToInt(py))) continue;
             classNameBuffer.Clear(); GetClassName(win.hwnd, classNameBuffer, classNameBuffer.Capacity);
@@ -672,7 +606,7 @@ public class AvatarWindowHandler : MonoBehaviour
             animator.SetBool("isWindowSit", true);
             animator.SetBool("isTaskbarSit", win.isTaskbar);
             animator.Update(0f);
-            CalibrateSeatAnchorToDesktopY(snapEdge + seatOffsetPx);
+            CalibrateSeatAnchorToDesktopY(top + seatOffsetPx);
 
             _postSettleFrames = 1; _postSettleRecalib = true;
 
@@ -682,8 +616,8 @@ public class AvatarWindowHandler : MonoBehaviour
                 snapFraction = Mathf.Clamp01((px2 - left) / w);
             }
 
-            _lastSnapTopY = snapEdge;
-            _snappedEdgeY = snapEdge;
+            _lastSnapTopY = top;
+            _snappedEdgeY = top;
             _recentUnsnap = false;
             SetTopMost(true);
 
@@ -812,29 +746,14 @@ public class AvatarWindowHandler : MonoBehaviour
     {
         if ((transform.lossyScale - _prevLossyScale).sqrMagnitude < 1e-6f) return;
         _prevLossyScale = transform.lossyScale;
-        int trTop    = tr.Top;
-        int trBottom = tr.Bottom;
-        int snapEdgeY = (windowSitEdge == "down") ? trBottom : trTop;
-        CalibrateSeatAnchorToDesktopY(snapEdgeY + seatOffsetPx);
+        CalibrateSeatAnchorToDesktopY(tr.Top + seatOffsetPx);
         _snapSmoothingActive = false;
         _snapVelX = _snapVelY = 0f;
     }
     void PinToTarget(RECT r)
     {
         if (!ComputeSeatDesktop(out float px, out float py)) return;
-        int left = r.Left, right = r.Right;
-        int rTop    = r.Top;
-        int rBottom = r.Bottom;
-        // Determine which edge to follow: windowSitEdge="down" always uses bottom,
-        // "up" always uses top, "auto" uses whichever was snapped to
-        bool snappedToBottom;
-        if (windowSitEdge == "down")
-            snappedToBottom = true;
-        else if (windowSitEdge == "up")
-            snappedToBottom = false;
-        else
-            snappedToBottom = Mathf.Abs(_snappedEdgeY - rBottom) < Mathf.Abs(_snappedEdgeY - rTop);
-        int top = snappedToBottom ? rBottom : rTop;
+        int left = r.Left, right = r.Right, top = r.Top;
         float desiredPX = left + snapFraction * Mathf.Max(1, right - left);
         float desiredPY = top + seatOffsetPx;
         int dx = Mathf.RoundToInt(desiredPX - px);
@@ -913,14 +832,10 @@ public class AvatarWindowHandler : MonoBehaviour
             var win = cachedWindows[i];
             if (win.hwnd != snappedHWND) continue;
             if (!ComputeZoneDesktop(out float px, out float py)) return true;
-            int left = win.rect.Left, right = win.rect.Right;
-            int top    = win.rect.Top;
-            int bottom = win.rect.Bottom;
+            int left = win.rect.Left, right = win.rect.Right, top = win.rect.Top;
             bool hitHoriz = px >= left && px <= right;
             int vBandCheck = Mathf.Max(unsnapVerticalBand, ScaledProbeRadiusI());
-            bool hitTop    = windowSitEdge != "down" && Mathf.Abs(py - top)    <= vBandCheck;
-            bool hitBottom = windowSitEdge != "up"   && Mathf.Abs(py - bottom) <= vBandCheck;
-            bool hitVert = hitTop || hitBottom;
+            bool hitVert = Mathf.Abs(py - top) <= vBandCheck;
             if (!hitHoriz || !hitVert) return false;
 
             if (controller.isDragging && animator.GetBool("isWindowSit"))
@@ -1060,21 +975,11 @@ public class AvatarWindowHandler : MonoBehaviour
 
         if (snappedHWND != unityHWND && GetWindowRect(snappedHWND, out RECT tr))
         {
-            // Absolute barrier BELOW the seat line. On the TOP edge it spans only
-            // the snapped window's horizontal extent (so it doesn't occlude empty
-            // wallpaper past the window's sides); on the BOTTOM edge the character
-            // dangles below the window, so the barrier keeps spanning the whole
-            // screen width to avoid a broken cliff at the window's side edges.
-            int seatLineY = GetSeatLineDesktopY(tr);
-            Rect tInter;
-            if (IsSnappedToBottom(tr))
-                tInter = Intersect(new Rect(unityClient.xMin, seatLineY, unityClient.width, unityClient.yMax - seatLineY), unityClient);
-            else
-                tInter = Intersect(new Rect(tr.Left, seatLineY, tr.Right - tr.Left, unityClient.yMax - seatLineY), unityClient);
+            Rect tInter = Intersect(new Rect(tr.Left, tr.Top, tr.Right - tr.Left, tr.Bottom - tr.Top), unityClient);
             if (tInter.width > 0 && tInter.height > 0)
             {
                 EnsureTargetQuad();
-                float z = autoScaleTargetZ ? GetVerticalPlaneDepth() : targetQuadZOffset;
+                float z = autoScaleTargetZ ? GetAutoTargetZ() : targetQuadZOffset;
                 UpdateQuadLocalFast(tInter, unityClient, z, targetMesh, targetQuadGO, verts4);
                 SetTargetQuadActive(true);
             }
@@ -1104,18 +1009,11 @@ public class AvatarWindowHandler : MonoBehaviour
 
         if (TryGetCachedRect(snappedHWND, out RECT tr2))
         {
-            // Same edge-dependent barrier as Windows: top edge spans the window's
-            // width, bottom edge spans the whole screen width.
-            int seatLineY2 = GetSeatLineDesktopY(tr2);
-            Rect tInter2;
-            if (IsSnappedToBottom(tr2))
-                tInter2 = Intersect(new Rect(unityClient2.xMin, seatLineY2, unityClient2.width, unityClient2.yMax - seatLineY2), unityClient2);
-            else
-                tInter2 = Intersect(new Rect(tr2.Left, seatLineY2, tr2.Right - tr2.Left, unityClient2.yMax - seatLineY2), unityClient2);
+            Rect tInter2 = Intersect(new Rect(tr2.Left, tr2.Top, tr2.Right - tr2.Left, tr2.Bottom - tr2.Top), unityClient2);
             if (tInter2.width > 0 && tInter2.height > 0)
             {
                 EnsureTargetQuad();
-                float z2 = autoScaleTargetZ ? GetVerticalPlaneDepth() : targetQuadZOffset;
+                float z2 = autoScaleTargetZ ? GetAutoTargetZ() : targetQuadZOffset;
                 UpdateQuadLocalFast(tInter2, unityClient2, z2, targetMesh, targetQuadGO, verts4);
                 SetTargetQuadActive(true);
             }
@@ -1141,34 +1039,6 @@ public class AvatarWindowHandler : MonoBehaviour
         float s = Mathf.Max(0.0001f, transform.lossyScale.y);
         float z = targetZBase + (s - targetZRefScale) * targetZSensitivity;
         return Mathf.Clamp(z, targetZMin, targetZMax);
-    }
-    // Camera-space depth of the "cliff" occluder plane. The plane sits at the
-    // character's seat depth and extends down from the seat line, so the parts of
-    // the character below the seat line that are deeper than it (the back of the
-    // body / long hair) get occluded while the parts in front (dangling legs,
-    // torso) stay visible - a 3D ledge look instead of a full silhouette cutout.
-    float GetVerticalPlaneDepth()
-    {
-        if (targetCamera == null) return GetAutoTargetZ();
-        Vector3 seat = GetSeatWorldCurrent();
-        Vector3 sp = targetCamera.WorldToScreenPoint(seat);
-        if (sp.z < 0.01f) return GetAutoTargetZ();
-        return sp.z + windowSitCliffOffset;
-    }
-    // Whether the character is sitting on the window's bottom edge (true) or top
-    // edge (false), mirroring the edge choice in PinToTarget.
-    bool IsSnappedToBottom(RECT r)
-    {
-        if (windowSitEdge == "down") return true;
-        if (windowSitEdge == "up") return false;
-        return Mathf.Abs(_snappedEdgeY - r.Bottom) < Mathf.Abs(_snappedEdgeY - r.Top);
-    }
-    // Desktop Y of the horizontal line the character sits on (the snapped edge
-    // plus seat offset). The absolute barrier applies only BELOW this line, so
-    // the upper body stays fully visible and the cliff occlusion exists below it.
-    int GetSeatLineDesktopY(RECT r)
-    {
-        return (IsSnappedToBottom(r) ? r.Bottom : r.Top) + Mathf.RoundToInt(seatOffsetPx);
     }
     void EnsureOccluderRoot()
     {

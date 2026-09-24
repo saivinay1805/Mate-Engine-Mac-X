@@ -127,6 +127,120 @@ public static class LocomotionHelper
                                    SaveLoadHandler.Instance.data.enableLocomotion;
                 t.SetIsOnWithoutNotify(currentLoco);
 
+                // Create or find sub-toggles for Normal Walk and Happi Jumpy Walk
+                Transform normalTr = t.transform.parent.Find("TOGGLE_NORMAL_WALK");
+                Toggle normalToggle;
+                if (normalTr != null)
+                {
+                    normalToggle = normalTr.GetComponent<Toggle>();
+                }
+                else
+                {
+                    GameObject normalGo = UnityEngine.Object.Instantiate(t.gameObject, t.transform.parent);
+                    normalGo.name = "TOGGLE_NORMAL_WALK";
+                    normalToggle = normalGo.GetComponent<Toggle>();
+                }
+
+                Transform happiTr = t.transform.parent.Find("TOGGLE_HAPPI_WALK");
+                Toggle happiToggle;
+                if (happiTr != null)
+                {
+                    happiToggle = happiTr.GetComponent<Toggle>();
+                }
+                else
+                {
+                    GameObject happiGo = UnityEngine.Object.Instantiate(t.gameObject, t.transform.parent);
+                    happiGo.name = "TOGGLE_HAPPI_WALK";
+                    happiToggle = happiGo.GetComponent<Toggle>();
+                }
+
+                if (normalToggle != null)
+                {
+                    normalToggle.gameObject.SetActive(true);
+                    normalToggle.onValueChanged.RemoveAllListeners();
+                    foreach (var mb in normalToggle.GetComponentsInChildren<MonoBehaviour>(true))
+                    {
+                        if (mb != null && mb.GetType().Name == "LocalizeStringEvent")
+                            mb.enabled = false;
+                    }
+                    RectTransform nRt = normalToggle.GetComponent<RectTransform>();
+                    if (nRt != null)
+                    {
+                        nRt.anchoredPosition = new Vector2(tRt.anchoredPosition.x + 22f, -145f);
+                    }
+                    foreach (var tmp in normalToggle.GetComponentsInChildren<TextMeshProUGUI>(true))
+                    {
+                        if (tmp != null) { tmp.text = "NORMAL WALK"; tmp.fontSize = 13f; }
+                    }
+                    normalToggle.interactable = currentLoco;
+                }
+
+                if (happiToggle != null)
+                {
+                    happiToggle.gameObject.SetActive(true);
+                    happiToggle.onValueChanged.RemoveAllListeners();
+                    foreach (var mb in happiToggle.GetComponentsInChildren<MonoBehaviour>(true))
+                    {
+                        if (mb != null && mb.GetType().Name == "LocalizeStringEvent")
+                            mb.enabled = false;
+                    }
+                    RectTransform hRt = happiToggle.GetComponent<RectTransform>();
+                    if (hRt != null)
+                    {
+                        hRt.anchoredPosition = new Vector2(tRt.anchoredPosition.x + 22f, -182f);
+                    }
+                    foreach (var tmp in happiToggle.GetComponentsInChildren<TextMeshProUGUI>(true))
+                    {
+                        if (tmp != null) { tmp.text = "HAPPI JUMPY WALK"; tmp.fontSize = 13f; }
+                    }
+                    happiToggle.interactable = currentLoco;
+                }
+
+                string curStyle = (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null && !string.IsNullOrEmpty(SaveLoadHandler.Instance.data.locomotionStyle))
+                    ? SaveLoadHandler.Instance.data.locomotionStyle
+                    : "happi";
+
+                if (normalToggle != null) normalToggle.SetIsOnWithoutNotify(curStyle == "normal");
+                if (happiToggle != null) happiToggle.SetIsOnWithoutNotify(curStyle != "normal");
+
+                Action<string> updateLocoStyle = (string style) =>
+                {
+                    var slh = SaveLoadHandler.Instance;
+                    if (slh != null && slh.data != null)
+                    {
+                        slh.data.locomotionStyle = style;
+                        slh.SaveToDisk();
+                    }
+                    if (normalToggle != null) normalToggle.SetIsOnWithoutNotify(style == "normal");
+                    if (happiToggle != null) happiToggle.SetIsOnWithoutNotify(style == "happi");
+
+                    var locos = Resources.FindObjectsOfTypeAll<AvatarLocomotionController>();
+                    for (int i = 0; i < locos.Length; i++)
+                    {
+                        if (locos[i] != null) locos[i].SetWalkStyle(style);
+                    }
+                };
+
+                if (normalToggle != null)
+                {
+                    normalToggle.onValueChanged.AddListener((bool val) =>
+                    {
+                        if (val) updateLocoStyle("normal");
+                        else if (SaveLoadHandler.Instance?.data?.locomotionStyle == "normal")
+                            normalToggle.SetIsOnWithoutNotify(true);
+                    });
+                }
+
+                if (happiToggle != null)
+                {
+                    happiToggle.onValueChanged.AddListener((bool val) =>
+                    {
+                        if (val) updateLocoStyle("happi");
+                        else if (SaveLoadHandler.Instance?.data?.locomotionStyle == "happi")
+                            happiToggle.SetIsOnWithoutNotify(true);
+                    });
+                }
+
                 t.onValueChanged.AddListener((bool val) =>
                 {
                     var slh = SaveLoadHandler.Instance;
@@ -135,6 +249,9 @@ public static class LocomotionHelper
                         slh.data.enableLocomotion = val;
                         slh.SaveToDisk();
                     }
+                    if (normalToggle != null) normalToggle.interactable = val;
+                    if (happiToggle != null) happiToggle.interactable = val;
+
                     var locos = Resources.FindObjectsOfTypeAll<AvatarLocomotionController>();
                     for (int i = 0; i < locos.Length; i++)
                     {
@@ -174,7 +291,7 @@ public static class LocomotionHelper
                 var tmp = infoTr.GetComponent<TextMeshProUGUI>();
                 if (tmp != null)
                 {
-                    tmp.text = "LET THE AVATAR RANDOMLY WALK EITHER TO THE RIGHT OR LEFT ON YOUR SCREEN. THIS IS AN EXPERIMENTAL FEATURE THAT IS STILL UNDER DEVELOPMENT. BUGS MAY OCCUR.";
+                    tmp.text = "CHOOSE BETWEEN CLASSIC NORMAL WALK (SPEED 2.5) OR CUTE HAPPI JUMPY WALK WITH SPINS (SPEED 3.0). THIS IS AN EXPERIMENTAL FEATURE.";
                     tmp.fontSize = 11f;
                     tmp.enableAutoSizing = false;
                     tmp.fontStyle = FontStyles.Normal;
@@ -184,7 +301,7 @@ public static class LocomotionHelper
                 RectTransform infoRt = infoTr.GetComponent<RectTransform>();
                 if (infoRt != null)
                 {
-                    infoRt.anchoredPosition = new Vector2(infoRt.anchoredPosition.x, -155f);
+                    infoRt.anchoredPosition = new Vector2(infoRt.anchoredPosition.x, -228f);
                     infoRt.sizeDelta = new Vector2(410f, 55f);
                 }
             }
@@ -353,9 +470,9 @@ public class SettingsScrollWatcher : MonoBehaviour
             if (sr != null && sr.content != null)
             {
                 var cRt = sr.content;
-                if (cRt.sizeDelta.y < 5750f)
+                if (cRt.sizeDelta.y < 5850f)
                 {
-                    cRt.sizeDelta = new Vector2(cRt.sizeDelta.x, 5750f);
+                    cRt.sizeDelta = new Vector2(cRt.sizeDelta.x, 5850f);
                 }
 
                 if (expCategory == null)

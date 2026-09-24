@@ -22,6 +22,18 @@ public sealed class AvatarLocomotionController : MonoBehaviour
     [Header("Window Movement")]
     [Range(0f, 10f)] public float WindowSpeed = 3f;
 
+    [Header("Locomotion Style")]
+    public string WalkStyle = "happi"; // "normal" or "happi"
+
+    AnimatorOverrideController _locoOverrideController;
+    AnimationClip _clipWalkL;
+    AnimationClip _clipWalkR;
+    AnimationClip _clipIdle;
+    AnimationClip _clipHappiWalkL;
+    AnimationClip _clipHappiWalkR;
+    AnimationClip _clipSpinL;
+    AnimationClip _clipSpinR;
+
     [Header("Animator Wiring")]
     public string BaseLayerName = "Base Layer";
     public string BaseIdleStateName = "Idle";
@@ -134,7 +146,13 @@ public sealed class AvatarLocomotionController : MonoBehaviour
     void OnEnable()
     {
         Application.runInBackground = true;
+        if (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null && !string.IsNullOrEmpty(SaveLoadHandler.Instance.data.locomotionStyle))
+        {
+            WalkStyle = SaveLoadHandler.Instance.data.locomotionStyle;
+            WindowSpeed = (WalkStyle == "normal") ? 2.5f : 3.0f;
+        }
         ResolveAnimatorSmart(true);
+        ApplyWalkStyleOverrides();
         CacheWindowHandle();
         ResolveBoundsRenderersSmart(true);
         ScheduleNextDecision(true);
@@ -279,10 +297,89 @@ public sealed class AvatarLocomotionController : MonoBehaviour
         Gizmos.DrawLine(t2, t3);
     }
 
+    public void SetWalkStyle(string style)
+    {
+        WalkStyle = (style == "normal") ? "normal" : "happi";
+        WindowSpeed = (WalkStyle == "normal") ? 2.5f : 3.0f;
+        ApplyWalkStyleOverrides();
+    }
+
+    public void ApplyWalkStyleOverrides()
+    {
+        if (Animator == null) return;
+
+        RuntimeAnimatorController baseRac = Animator.runtimeAnimatorController;
+        if (baseRac == null) return;
+
+        if (_locoOverrideController == null || _locoOverrideController.runtimeAnimatorController != baseRac)
+        {
+            if (baseRac is AnimatorOverrideController existingAoc)
+            {
+                _locoOverrideController = existingAoc;
+            }
+            else
+            {
+                _locoOverrideController = new AnimatorOverrideController(baseRac);
+                Animator.runtimeAnimatorController = _locoOverrideController;
+            }
+        }
+
+        if (_clipWalkL == null || _clipWalkR == null)
+        {
+            var allClips = Resources.FindObjectsOfTypeAll<AnimationClip>();
+            for (int i = 0; i < allClips.Length; i++)
+            {
+                var c = allClips[i];
+                if (c == null) continue;
+                if (c.name == "PET_WALK_LEFT") _clipWalkL = c;
+                else if (c.name == "PET_WALK_RIGHT") _clipWalkR = c;
+                else if (c.name == "PET_IDLE" && _clipIdle == null) _clipIdle = c;
+                else if (c.name == "Happi Walk L") _clipHappiWalkL = c;
+                else if (c.name == "Happi Walk R") _clipHappiWalkR = c;
+                else if (c.name == "Spin L") _clipSpinL = c;
+                else if (c.name == "Spin R") _clipSpinR = c;
+            }
+        }
+
+        var overrides = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>>(_locoOverrideController.overridesCount);
+        _locoOverrideController.GetOverrides(overrides);
+
+        for (int i = 0; i < overrides.Count; i++)
+        {
+            var key = overrides[i].Key;
+            if (key == null) continue;
+
+            if (WalkStyle == "normal")
+            {
+                if (key.name == "Happi Walk L" && _clipWalkL != null)
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipWalkL);
+                else if (key.name == "Happi Walk R" && _clipWalkR != null)
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipWalkR);
+                else if ((key.name == "Spin L" || key.name == "Spin R") && _clipIdle != null)
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipIdle);
+            }
+            else // "happi"
+            {
+                if (key.name == "Happi Walk L")
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipHappiWalkL != null ? _clipHappiWalkL : key);
+                else if (key.name == "Happi Walk R")
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipHappiWalkR != null ? _clipHappiWalkR : key);
+                else if (key.name == "Spin L")
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipSpinL != null ? _clipSpinL : key);
+                else if (key.name == "Spin R")
+                    overrides[i] = new System.Collections.Generic.KeyValuePair<AnimationClip, AnimationClip>(key, _clipSpinR != null ? _clipSpinR : key);
+            }
+        }
+
+        _locoOverrideController.ApplyOverrides(overrides);
+    }
+
     public void SetAnimator(Animator a)
     {
         Animator = a;
+        _locoOverrideController = null;
         RefreshLayerIndex();
+        ApplyWalkStyleOverrides();
     }
 
     void ResolveAnimatorSmart(bool immediate)
@@ -298,32 +395,28 @@ public sealed class AvatarLocomotionController : MonoBehaviour
         found = GetComponent<Animator>();
         if (found != null && found.isActiveAndEnabled)
         {
-            Animator = found;
-            RefreshLayerIndex();
+            SetAnimator(found);
             return;
         }
 
         var controller = FindAnyObjectByType<AvatarAnimatorController>();
         if (controller != null && controller.animator != null && controller.animator.isActiveAndEnabled)
         {
-            Animator = controller.animator;
-            RefreshLayerIndex();
+            SetAnimator(controller.animator);
             return;
         }
 
         var voice = FindAnyObjectByType<PetVoiceReactionHandler>();
         if (voice != null && voice.avatarAnimator != null && voice.avatarAnimator.isActiveAndEnabled)
         {
-            Animator = voice.avatarAnimator;
-            RefreshLayerIndex();
+            SetAnimator(voice.avatarAnimator);
             return;
         }
 
         var bubble = FindAnyObjectByType<AvatarBubbleHandler>();
         if (bubble != null && bubble.avatarAnimator != null && bubble.avatarAnimator.isActiveAndEnabled)
         {
-            Animator = bubble.avatarAnimator;
-            RefreshLayerIndex();
+            SetAnimator(bubble.avatarAnimator);
             return;
         }
 
@@ -339,8 +432,10 @@ public sealed class AvatarLocomotionController : MonoBehaviour
             break;
         }
 
-        Animator = found;
-        RefreshLayerIndex();
+        if (found != null)
+        {
+            SetAnimator(found);
+        }
     }
 
     void ResolveBoundsRenderersSmart(bool immediate)
@@ -514,8 +609,15 @@ public sealed class AvatarLocomotionController : MonoBehaviour
     void EndWalk()
     {
         StopWalking();
-        // Give time for the character to perform the cute post-walk spin animation (~1.0s)
-        _pauseUntil = Time.unscaledTime + UnityEngine.Random.Range(1.2f, 2.0f);
+        if (WalkStyle == "normal")
+        {
+            _pauseUntil = Time.unscaledTime + UnityEngine.Random.Range(0.2f, 0.5f);
+        }
+        else
+        {
+            // Give time for the character to perform the cute post-walk spin animation (~1.0s)
+            _pauseUntil = Time.unscaledTime + UnityEngine.Random.Range(1.2f, 2.0f);
+        }
         ScheduleNextDecision(false);
     }
 

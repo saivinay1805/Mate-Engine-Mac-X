@@ -66,8 +66,8 @@ def inject_animations(target_sa0_path):
         return False
     m_ctrl_obj = m_ctrl_objs[0]
     existing_ctrl_tree = m_ctrl_obj.read_typetree()
-    if len(existing_ctrl_tree.get("m_AnimationClips", [])) == 138:
-        print("[inject_animations] Target already has 138 animation clips in AvatarAnimatorControllerV2 1. Skipping.")
+    if len(existing_ctrl_tree.get("m_AnimationClips", [])) >= 140:
+        print(f"[inject_animations] Target already has {len(existing_ctrl_tree.get('m_AnimationClips', []))} animation clips in AvatarAnimatorControllerV2 1. Skipping.")
         return True
 
     # Map existing clips in target
@@ -128,7 +128,14 @@ def inject_animations(target_sa0_path):
         else:
             print(f"[inject_animations] Warning: Could not remap clip steam_pid={steam_pid} (name={clip_name})")
 
-    print(f"[inject_animations] Remapped {remapped}/{len(ctrl_tree['m_AnimationClips'])} controller clip references.")
+    # Also append classic PET_WALK_LEFT and PET_WALK_RIGHT so both normal and happi walk clips are accessible in runtime
+    for walk_name in ["PET_WALK_LEFT", "PET_WALK_RIGHT"]:
+        if walk_name in m_clip_pid_by_name:
+            walk_pid = m_clip_pid_by_name[walk_name]
+            ctrl_tree["m_AnimationClips"].append({"m_FileID": 0, "m_PathID": walk_pid})
+            print(f"[inject_animations] Appended {walk_name} (pid={walk_pid}) to controller clips.")
+
+    print(f"[inject_animations] Remapped {remapped} clips; total {len(ctrl_tree['m_AnimationClips'])} controller clip references.")
     m_ctrl_obj.save_typetree(ctrl_tree)
 
     # Save target file
@@ -141,7 +148,7 @@ def inject_animations(target_sa0_path):
     re_env = UnityPy.load(target_sa0_path)
     re_ctrl = [o for o in re_env.objects if o.type.name == 'AnimatorController' and o.read_typetree().get('m_Name') == 'AvatarAnimatorControllerV2 1'][0].read_typetree()
     re_clips = re_ctrl.get("m_AnimationClips", [])
-    if len(re_clips) == 138:
+    if len(re_clips) >= 138:
         print(f"[inject_animations] Verification SUCCESS: AvatarAnimatorControllerV2 1 has {len(re_clips)} clips.")
         return True
     else:

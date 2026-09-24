@@ -212,8 +212,8 @@ public class SaveLoadHandler : MonoBehaviour
 
         public bool enableHandHolding = true;
         public bool enableWindowSitting = true;
-        // "auto" = snap to both edges, "up" = top edge only, "down" = bottom edge only
-        public string windowSitEdge = "auto";
+        // "up" = top edge only (original behavior), "auto" = both edges, "down" = bottom edge only
+        public string windowSitEdge = "up";
         public bool ambientOcclusion = true;
 
         public float uiHueShift = 0f;
@@ -228,9 +228,7 @@ public class SaveLoadHandler : MonoBehaviour
 
         public int bigScreenScreenSaverTimeoutIndex = 0;
         public bool bigScreenScreenSaverEnabled = false;
-        public float windowSitYOffset = -0.02f;
-        // Runtime-tunable cliff occluder depth (⌘+[ / ⌘+]). offsetSet distinguishes
-        // "never tuned" (use the Inspector value) from an explicit saved value.
+        public float windowSitYOffset = 0f;
         public bool windowSitCliffOffsetSet = false;
         public float windowSitCliffOffset = 0f;
 
@@ -280,6 +278,7 @@ public class SaveLoadHandler : MonoBehaviour
         public bool enableRandomAvatar = false;
 
         public bool enableLocomotion = false;
+        public string locomotionStyle = "happi"; // "normal" or "happi"
 
 
         //ALARM
@@ -406,7 +405,10 @@ public class SaveLoadHandler : MonoBehaviour
             }
 
             foreach (var loco in Resources.FindObjectsOfTypeAll<AvatarLocomotionController>())
+            {
                 loco.EnableLocomotion = data.enableLocomotion;
+                loco.SetWalkStyle(data.locomotionStyle);
+            }
 
         }
     }

@@ -69,6 +69,7 @@ public static class MacBuild
         }
 
         Debug.Log($"[MacBuild] macOS build succeeded: {Path.GetFullPath(output)}");
+        EditorApplication.Exit(0);
     }
 
     private static BuildReport Build(BuildOptions options, string output = null)
@@ -117,5 +118,28 @@ public static class MacBuild
     private static bool HasCommandLineArg(string name)
     {
         return Environment.GetCommandLineArgs().Any(arg => arg == name);
+    }
+
+    [UnityEditor.Callbacks.PostProcessBuild(100)]
+    public static void OnPostProcessBuild(BuildTarget target, string pathToBuiltProject)
+    {
+        if (target != BuildTarget.StandaloneOSX) return;
+
+        string helperSrc = Path.Combine(Application.dataPath, "Plugins/MacOS/matesfbhelper");
+        string helperDst = Path.Combine(pathToBuiltProject, "Contents/MacOS/matesfbhelper");
+        if (File.Exists(helperSrc))
+        {
+            try
+            {
+                File.Copy(helperSrc, helperDst, true);
+                var chmod = System.Diagnostics.Process.Start("chmod", $"+x \"{helperDst}\"");
+                chmod?.WaitForExit();
+                Debug.Log($"[MacBuild] PostProcessBuild: Copied matesfbhelper to {helperDst}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MacBuild] PostProcessBuild failed to copy matesfbhelper: {ex.Message}");
+            }
+        }
     }
 }

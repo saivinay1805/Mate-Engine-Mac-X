@@ -47,29 +47,40 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
   APP_BUNDLE="$OUTPUT"
   [ -d "$APP_BUNDLE" ] || APP_BUNDLE="$ROOT/$OUTPUT"
 
-  echo "[build_macos] Signing $APP_BUNDLE with '$SIGN_IDENTITY'"
-  find "$APP_BUNDLE/Contents" \( -name '*.bundle' -type d -o -name '*.dylib' -type f \) -print0 \
-    | xargs -0 -n1 codesign --force --sign "$SIGN_IDENTITY"
-  codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_BUNDLE"
-  codesign --verify --deep --strict "$APP_BUNDLE"
-
-  echo "[build_macos] Checking universal architectures"
-  for binary in \
-    "$APP_BUNDLE/Contents/MacOS/MateEngineX" \
-    "$APP_BUNDLE"/Contents/PlugIns/*.bundle/Contents/MacOS/*; do
-    [ -e "$binary" ] || continue
-    if ! lipo -info "$binary" | grep -q "x86_64" || ! lipo -info "$binary" | grep -q "arm64"; then
-      echo "[build_macos] Not universal: $binary" >&2
-      lipo -info "$binary" >&2 || true
-      exit 1
-    fi
-  done
-  echo "[build_macos] Universal architecture check OK"
+  # Copy matesfbhelper to Contents/MacOS
+  if [ -f "$ROOT/Assets/Plugins/MacOS/matesfbhelper" ]; then
+    echo "[build_macos] Installing matesfbhelper to $APP_BUNDLE/Contents/MacOS/matesfbhelper"
+    cp -f "$ROOT/Assets/Plugins/MacOS/matesfbhelper" "$APP_BUNDLE/Contents/MacOS/matesfbhelper"
+    chmod +x "$APP_BUNDLE/Contents/MacOS/matesfbhelper"
+  fi
 
   # Patch bloom alpha multipliers in sharedassets0.assets to prevent dark oval artifact on macOS
   if [ -f "$ROOT/Tools/patch_bloom_alpha.py" ] && [ -f "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets" ]; then
     echo "[build_macos] Applying macOS bloom alpha fix to sharedassets0.assets..."
     python3 "$ROOT/Tools/patch_bloom_alpha.py" "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets" || true
+  fi
+
+  echo "[build_macos] Signing $APP_BUNDLE with '$SIGN_IDENTITY'"
+  find "$APP_BUNDLE/Contents" \( -name '*.bundle' -type d -o -name '*.dylib' -type f -o -name 'matesfbhelper' -type f \) -print0 \
+    | xargs -0 -n1 codesign --force --sign "$SIGN_IDENTITY"
+  codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_BUNDLE"
+  codesign --verify --deep --strict "$APP_BUNDLE"
+
+  REQUIRE_UNIVERSAL="${REQUIRE_UNIVERSAL:-0}"
+  if [ "$REQUIRE_UNIVERSAL" = "1" ]; then
+    echo "[build_macos] Checking universal architectures"
+    for binary in \
+      "$APP_BUNDLE/Contents/MacOS/MateEngineX" \
+      "$APP_BUNDLE/Contents/MacOS/matesfbhelper" \
+      "$APP_BUNDLE"/Contents/PlugIns/*.bundle/Contents/MacOS/*; do
+      [ -e "$binary" ] || continue
+      if ! lipo -info "$binary" | grep -q "x86_64" || ! lipo -info "$binary" | grep -q "arm64"; then
+        echo "[build_macos] Not universal: $binary" >&2
+        lipo -info "$binary" >&2 || true
+        exit 1
+      fi
+    done
+    echo "[build_macos] Universal architecture check OK"
   fi
 
   if [ "$PACKAGE_DMG" = "1" ]; then

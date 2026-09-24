@@ -19,24 +19,26 @@ namespace SFB {
         }
 
         private static string GetFilePickerExecutable() {
-            string helperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "matesfbhelper");
-            if (!File.Exists(helperPath)) {
-                try {
-                    string macosDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
-                    if (!string.IsNullOrEmpty(macosDir)) {
-                        string p = Path.Combine(macosDir, "matesfbhelper");
-                        if (File.Exists(p)) helperPath = p;
-                    }
-                }
-                catch { }
+            try {
+                string macosDir = Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, "../../MacOS"));
+                string p = Path.Combine(macosDir, "matesfbhelper");
+                if (File.Exists(p)) return p;
             }
-            if (!File.Exists(helperPath) && File.Exists("/Applications/MateEngineX.app/Contents/MacOS/matesfbhelper")) {
-                helperPath = "/Applications/MateEngineX.app/Contents/MacOS/matesfbhelper";
+            catch { }
+
+            try {
+                string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "matesfbhelper");
+                if (File.Exists(p)) return p;
             }
-            if (!File.Exists(helperPath) && File.Exists("/tmp/matesfbhelper")) {
-                helperPath = "/tmp/matesfbhelper";
+            catch { }
+
+            if (File.Exists("/Applications/MateEngineX.app/Contents/MacOS/matesfbhelper")) {
+                return "/Applications/MateEngineX.app/Contents/MacOS/matesfbhelper";
             }
-            return File.Exists(helperPath) ? helperPath : "/usr/bin/osascript";
+            if (File.Exists("/tmp/matesfbhelper")) {
+                return "/tmp/matesfbhelper";
+            }
+            return "/usr/bin/osascript";
         }
 
         private static string RunAppleScript(string script) {

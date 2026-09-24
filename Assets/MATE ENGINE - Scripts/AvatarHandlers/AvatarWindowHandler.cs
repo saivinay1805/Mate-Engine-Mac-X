@@ -235,6 +235,35 @@ public class AvatarWindowHandler : MonoBehaviour
 #if !UNITY_STANDALONE_WIN && !(UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX)
         return;
 #endif
+        if (animator == null)
+        {
+            animator = GetComponent<Animator>();
+            if (animator == null) animator = GetComponentInChildren<Animator>();
+            if (animator == null)
+            {
+                var anims = FindObjectsByType<Animator>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                for (int i = 0; i < anims.Length; i++)
+                {
+                    if (anims[i] != null && (anims[i].isHuman || anims[i].runtimeAnimatorController != null))
+                    {
+                        animator = anims[i];
+                        break;
+                    }
+                }
+            }
+            if (animator != null)
+            {
+                CacheRigRefs();
+                BuildBlockSitCache();
+            }
+        }
+        if (controller == null)
+        {
+            controller = GetComponent<AvatarAnimatorController>();
+            if (controller == null) controller = GetComponentInChildren<AvatarAnimatorController>();
+            if (controller == null) controller = FindAnyObjectByType<AvatarAnimatorController>();
+        }
+
         if (snappedHWND != IntPtr.Zero)
         {
             if ((transform.lossyScale - _prevLossyScale).sqrMagnitude > 1e-8f) { _snapSmoothingActive = false; _snapVelX = _snapVelY = 0f; }

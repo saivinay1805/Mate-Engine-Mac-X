@@ -16,11 +16,11 @@ public sealed class AvatarLocomotionController : MonoBehaviour
 
     [Header("Locomotion Timing")]
     [Range(0f, 60f)] public float Randomizer = 10f;
-    [Range(10f, 4000f)] public float MinWalkCycle = 250f;
-    [Range(10f, 4000f)] public float MaxWalkCycle = 550f;
+    [Range(10f, 4000f)] public float MinWalkCycle = 120f;
+    [Range(10f, 4000f)] public float MaxWalkCycle = 240f;
 
     [Header("Window Movement")]
-    [Range(0f, 10f)] public float WindowSpeed = 2f;
+    [Range(0f, 10f)] public float WindowSpeed = 3f;
 
     [Header("Animator Wiring")]
     public string BaseLayerName = "Base Layer";
@@ -514,7 +514,8 @@ public sealed class AvatarLocomotionController : MonoBehaviour
     void EndWalk()
     {
         StopWalking();
-        _pauseUntil = Time.unscaledTime + UnityEngine.Random.Range(0.4f, 1.2f);
+        // Give time for the character to perform the cute post-walk spin animation (~1.0s)
+        _pauseUntil = Time.unscaledTime + UnityEngine.Random.Range(1.2f, 2.0f);
         ScheduleNextDecision(false);
     }
 

@@ -116,6 +116,15 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
     python3 "$ROOT/Tools/patch_bloom_alpha.py" "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets" || true
   fi
 
+  # Inject MateEngine 3.4X animations and AnimatorController (27 dances/idles, bouncy walk, spins)
+  if [ -f "$ROOT/Tools/inject_animations.py" ] && [ -f "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets" ]; then
+    echo "[build_macos] Injecting MateEngine 3.4X animations to sharedassets0.assets..."
+    python3 "$ROOT/Tools/inject_animations.py" "$APP_BUNDLE/Contents/Resources/Data/sharedassets0.assets"
+  fi
+
+  # Remove any rogue test dance bundles
+  rm -f "$APP_BUNDLE/Contents/Resources/Data/StreamingAssets/CustomDances/new_dances.unity3d"
+
   CODESIGN_FLAGS=()
   if [ "$SIGN_IDENTITY" != "-" ]; then
     CODESIGN_FLAGS=(--options runtime --timestamp)

@@ -28,6 +28,11 @@ static NSRect swizzled_constrainFrameRect(id self, SEL _cmd, NSRect frameRect, N
     return frameRect;
 }
 
+static BOOL swizzled_acceptsFirstMouse(id self, SEL _cmd, NSEvent *theEvent)
+{
+    return YES;
+}
+
 static id gActivity = nil;
 
 void MacWindowFix_Install(void)
@@ -39,6 +44,13 @@ void MacWindowFix_Install(void)
         if (original) {
             method_setImplementation(original,
                 (IMP)swizzled_constrainFrameRect);
+        }
+
+        Method origFirstMouse = class_getInstanceMethod([NSView class],
+                            @selector(acceptsFirstMouse:));
+        if (origFirstMouse) {
+            method_setImplementation(origFirstMouse,
+                (IMP)swizzled_acceptsFirstMouse);
         }
         
         NSActivityOptions options = NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical;

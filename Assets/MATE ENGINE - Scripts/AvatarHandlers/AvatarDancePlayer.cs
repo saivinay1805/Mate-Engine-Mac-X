@@ -569,21 +569,12 @@ namespace CustomDancePlayer
                 ("HUS_DANCE_02", "Husbando Dance 02"),
                 ("HUS_DANCE_03", "Husbando Dance 03"),
                 ("HUS_DANCE_04", "Husbando Dance 04"),
-                ("AnkhaZone", "Dance - Ankha Zone"),
                 ("PET_IDLE_16", "Idle - Silly Talk"),
                 ("PET_IDLE_17", "Idle - Look Around"),
                 ("PET_IDLE_18", "Idle - Look Around 2"),
                 ("PET_IDLE_19", "Idle - Stop It"),
                 ("PET_IDLE_20", "Idle - Confusing"),
-                ("PET_IDLE_21", "Idle - Look Around 3"),
-                ("PET_IDLE_22", "Idle - Special Walk"),
-                ("PET_IDLE_UPDATE2_01", "Idle - Update2 01"),
-                ("PET_IDLE_UPDATE2_02", "Idle - Update2 02"),
-                ("PET_IDLE_UPDATE2_03", "Idle - Update2 03"),
-                ("PET_IDLE_UPDATE2_04", "Idle - Update2 04"),
-                ("PET_HAPPY", "Expression - Happy"),
-                ("PET_LAUGHING", "Expression - Laughing"),
-                ("PET_SHY_POINT", "Expression - Shy Point")
+                ("PET_IDLE_21", "Idle - Look Around 3")
             };
 
             var clipMap = new Dictionary<string, AnimationClip>(StringComparer.OrdinalIgnoreCase);

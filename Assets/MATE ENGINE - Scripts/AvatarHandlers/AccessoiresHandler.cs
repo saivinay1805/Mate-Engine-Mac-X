@@ -39,6 +39,12 @@ public class AccessoiresHandler : MonoBehaviour
     void Start()
     {
         if (animator == null) animator = GetComponent<Animator>();
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+        if (animator == null) animator = GetComponentInParent<Animator>();
+
+        if (animator != null)
+            SetLayerRecursively(animator.gameObject, 10);
+
         if (!SteamDRM.Initialized) SteamDRM.Initialize(steamAppId, ttlDays);
 
         foreach (var rule in rules)
@@ -50,21 +56,50 @@ public class AccessoiresHandler : MonoBehaviour
                 l.range = 1.25f;
                 l.cullingMask = 1 << 10; // Only illuminate Layer 10 (Model), avoiding the Shadow backdrop plane at z=2.02
             }
-            Transform boneTransform = animator.GetBoneTransform(rule.targetBone);
-            if (boneTransform == null) continue;
+            Transform boneTransform = (animator != null) ? animator.GetBoneTransform(rule.targetBone) : null;
 
             var tracking = new BoneTracking
             {
                 bone = boneTransform,
                 obj = rule.linkedObject,
-                currentPosition = boneTransform.position,
-                currentRotation = boneTransform.rotation,
+                currentPosition = boneTransform != null ? boneTransform.position : Vector3.zero,
+                currentRotation = boneTransform != null ? boneTransform.rotation : Quaternion.identity,
                 lastActiveState = false
             };
             trackingMap[rule] = tracking;
         }
 
         StartCoroutine(ReinitLoop());
+    }
+
+    public void SetAnimator(Animator newAnim)
+    {
+        animator = newAnim;
+        if (animator != null)
+        {
+            SetLayerRecursively(animator.gameObject, 10);
+            foreach (var kvp in trackingMap)
+            {
+                Transform bt = animator.GetBoneTransform(kvp.Key.targetBone);
+                if (bt != null)
+                {
+                    kvp.Value.bone = bt;
+                    kvp.Value.currentPosition = bt.position;
+                    kvp.Value.currentRotation = bt.rotation;
+                }
+            }
+        }
+    }
+
+    private static void SetLayerRecursively(GameObject obj, int newLayer)
+    {
+        if (obj == null) return;
+        obj.layer = newLayer;
+        foreach (Transform child in obj.transform)
+        {
+            if (child != null)
+                SetLayerRecursively(child.gameObject, newLayer);
+        }
     }
 
     void Update()
@@ -87,14 +122,27 @@ public class AccessoiresHandler : MonoBehaviour
 
             if (shouldBeActive && tracking.obj != null)
             {
-                Vector3 targetPos = tracking.bone.TransformPoint(rule.positionOffset);
-                Quaternion targetRot = tracking.bone.rotation;
+                if (tracking.bone == null && animator != null)
+                {
+                    tracking.bone = animator.GetBoneTransform(rule.targetBone);
+                    if (tracking.bone != null)
+                    {
+                        tracking.currentPosition = tracking.bone.position;
+                        tracking.currentRotation = tracking.bone.rotation;
+                    }
+                }
 
-                tracking.currentPosition = Vector3.Lerp(tracking.currentPosition, targetPos, 1f - rule.smoothness);
-                tracking.currentRotation = Quaternion.Slerp(tracking.currentRotation, targetRot, 1f - rule.smoothness);
+                if (tracking.bone != null)
+                {
+                    Vector3 targetPos = tracking.bone.TransformPoint(rule.positionOffset);
+                    Quaternion targetRot = tracking.bone.rotation;
 
-                tracking.obj.transform.position = tracking.currentPosition;
-                tracking.obj.transform.rotation = tracking.currentRotation;
+                    tracking.currentPosition = Vector3.Lerp(tracking.currentPosition, targetPos, 1f - rule.smoothness);
+                    tracking.currentRotation = Quaternion.Slerp(tracking.currentRotation, targetRot, 1f - rule.smoothness);
+
+                    tracking.obj.transform.position = tracking.currentPosition;
+                    tracking.obj.transform.rotation = tracking.currentRotation;
+                }
             }
         }
     }

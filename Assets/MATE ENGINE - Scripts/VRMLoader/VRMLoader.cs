@@ -310,6 +310,7 @@ public class VRMLoader : MonoBehaviour
         loadedModel.transform.localRotation = Quaternion.identity;
         loadedModel.transform.localScale = Vector3.one;
         currentModel = loadedModel;
+        SetLayerRecursively(currentModel, 10);
 
         EnableSkinnedMeshRenderers(currentModel);
         AssignAnimatorController(currentModel);
@@ -440,6 +441,17 @@ public class VRMLoader : MonoBehaviour
 
         if (!skipRawImageCleanup)
             CleanupAllRawImagesInScene();
+    }
+
+    private void SetLayerRecursively(GameObject obj, int newLayer)
+    {
+        if (obj == null) return;
+        obj.layer = newLayer;
+        foreach (Transform child in obj.transform)
+        {
+            if (child != null)
+                SetLayerRecursively(child.gameObject, newLayer);
+        }
     }
 
     private void EnableSkinnedMeshRenderers(GameObject model)

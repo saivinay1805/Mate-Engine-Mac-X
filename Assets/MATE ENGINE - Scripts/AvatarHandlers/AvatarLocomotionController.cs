@@ -16,8 +16,8 @@ public sealed class AvatarLocomotionController : MonoBehaviour
 
     [Header("Locomotion Timing")]
     [Range(0f, 60f)] public float Randomizer = 10f;
-    [Range(10f, 4000f)] public float MinWalkCycle = 120f;
-    [Range(10f, 4000f)] public float MaxWalkCycle = 240f;
+    [Range(10f, 4000f)] public float MinWalkCycle = 300f;
+    [Range(10f, 4000f)] public float MaxWalkCycle = 600f;
 
     [Header("Window Movement")]
     [Range(0f, 10f)] public float WindowSpeed = 3f;
@@ -129,6 +129,7 @@ public sealed class AvatarLocomotionController : MonoBehaviour
     bool _walking;
     int _dir;
     float _remainingPixels;
+    float _currentWindowX;
     float _nextDecisionTime;
     float _pauseUntil;
 
@@ -150,6 +151,8 @@ public sealed class AvatarLocomotionController : MonoBehaviour
         {
             WalkStyle = SaveLoadHandler.Instance.data.locomotionStyle;
             WindowSpeed = (WalkStyle == "normal") ? 2.5f : 3.0f;
+            MinWalkCycle = (WalkStyle == "normal") ? 250f : 300f;
+            MaxWalkCycle = (WalkStyle == "normal") ? 500f : 600f;
         }
         ResolveAnimatorSmart(true);
         ApplyWalkStyleOverrides();
@@ -301,6 +304,8 @@ public sealed class AvatarLocomotionController : MonoBehaviour
     {
         WalkStyle = (style == "normal") ? "normal" : "happi";
         WindowSpeed = (WalkStyle == "normal") ? 2.5f : 3.0f;
+        MinWalkCycle = (WalkStyle == "normal") ? 250f : 300f;
+        MaxWalkCycle = (WalkStyle == "normal") ? 500f : 600f;
         ApplyWalkStyleOverrides();
     }
 
@@ -463,6 +468,14 @@ public sealed class AvatarLocomotionController : MonoBehaviour
 
     bool IsBaseIdle()
     {
+        if (Animator == null) return false;
+        try
+        {
+            if (Animator.GetBool("isDragging")) return false;
+            if (Animator.GetBool("isWindowSit")) return false;
+            if (Animator.GetBool("isTaskbarSit")) return false;
+        }
+        catch { }
         AnimatorStateInfo s = Animator.GetCurrentAnimatorStateInfo(_baseLayerIndex);
         return s.IsName(BaseIdleStateName);
     }
@@ -486,6 +499,12 @@ public sealed class AvatarLocomotionController : MonoBehaviour
             return;
         }
 
+        if (!TryGetWindowRect(out RECT r))
+        {
+            ScheduleNextDecision(false);
+            return;
+        }
+
         int chosenDir = 0;
 
         if (_forcedNextDir != 0)
@@ -503,6 +522,7 @@ public sealed class AvatarLocomotionController : MonoBehaviour
 
         _dir = chosenDir;
         _remainingPixels = UnityEngine.Random.Range(min, max);
+        _currentWindowX = r.Left;
         _walking = true;
 
         Animator.SetBool(WalkLeftParam, _dir < 0);
@@ -542,6 +562,11 @@ public sealed class AvatarLocomotionController : MonoBehaviour
             return;
         }
 
+        if (Mathf.Abs(r.Left - _currentWindowX) > 60f)
+        {
+            _currentWindowX = r.Left;
+        }
+
         int w = r.Right - r.Left;
 
         if (!TryGetMonitorBounds(_hwnd, out int monitorLeft, out int monitorRight))
@@ -571,21 +596,24 @@ public sealed class AvatarLocomotionController : MonoBehaviour
             maxX = maxWinX;
         }
 
-        float speedPxPerSecond = Mathf.Max(0f, WindowSpeed) * 100f;
-        if (speedPxPerSecond <= 0.01f)
-        {
-            EndWalk();
-            return;
-        }
+        if (maxX < minX) maxX = minX;
 
+        float speedPxPerSecond = Mathf.Max(0.5f, WindowSpeed) * 100f;
         float step = speedPxPerSecond * Time.unscaledDeltaTime;
         float move = Mathf.Min(step, _remainingPixels);
 
-        int targetX = r.Left + Mathf.RoundToInt(move * _dir);
+        _remainingPixels -= move;
+        _currentWindowX += move * _dir;
+
+        int targetX = Mathf.RoundToInt(_currentWindowX);
         int clampedX = Mathf.Clamp(targetX, minX, maxX);
 
-        int actualMoved = Mathf.Abs(clampedX - r.Left);
-        _remainingPixels -= actualMoved;
+        if (clampedX != targetX)
+        {
+            _currentWindowX = clampedX;
+            _remainingPixels = 0f;
+            _forcedNextDir = -_dir;
+        }
 
         int yKeep = r.Top;
 
@@ -594,12 +622,6 @@ public sealed class AvatarLocomotionController : MonoBehaviour
             StopWalking();
             ScheduleNextDecision(false);
             return;
-        }
-
-        if (actualMoved <= 0)
-        {
-            _remainingPixels = 0f;
-            _forcedNextDir = -_dir;
         }
 
         if (_remainingPixels <= 0.01f)

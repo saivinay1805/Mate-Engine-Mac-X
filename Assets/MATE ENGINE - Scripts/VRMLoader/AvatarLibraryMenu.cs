@@ -429,8 +429,9 @@ public class AvatarLibraryMenu : MonoBehaviour
         RefreshUI();
     }
 
-    private void RemoveAvatar(AvatarEntry entryToRemove)
+    public void RemoveAvatar(AvatarEntry entryToRemove)
     {
+        if (entryToRemove == null) return;
         string avatarsJsonPath = Path.Combine(Application.persistentDataPath, "avatars.json");
 
         if (!File.Exists(avatarsJsonPath))
@@ -445,9 +446,18 @@ public class AvatarLibraryMenu : MonoBehaviour
         }
         catch { }
 
-        entries = entries.Where(e => e.filePath != entryToRemove.filePath).ToList();
+        string targetPath = !string.IsNullOrEmpty(entryToRemove.filePath) ? Path.GetFullPath(entryToRemove.filePath) : "";
 
-        if (entryToRemove.isSteamWorkshop && File.Exists(entryToRemove.filePath))
+        entries = entries.Where(e => {
+            if (string.IsNullOrEmpty(e.filePath)) return false;
+            try {
+                if (!string.IsNullOrEmpty(targetPath) && string.Equals(Path.GetFullPath(e.filePath), targetPath, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            } catch { }
+            return !string.Equals(e.filePath, entryToRemove.filePath, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+
+        if (entryToRemove.isSteamWorkshop && !string.IsNullOrEmpty(entryToRemove.filePath) && File.Exists(entryToRemove.filePath))
         {
             try
             {
@@ -460,7 +470,7 @@ public class AvatarLibraryMenu : MonoBehaviour
             }
         }
 
-        if (File.Exists(entryToRemove.thumbnailPath))
+        if (!string.IsNullOrEmpty(entryToRemove.thumbnailPath) && File.Exists(entryToRemove.thumbnailPath))
         {
             try
             {
@@ -471,6 +481,26 @@ public class AvatarLibraryMenu : MonoBehaviour
 
         string newJson = JsonConvert.SerializeObject(entries, Formatting.Indented);
         File.WriteAllText(avatarsJsonPath, newJson);
+
+        // If the removed avatar is currently loaded, switch back to default model
+        if (SaveLoadHandler.Instance != null && !string.IsNullOrEmpty(targetPath))
+        {
+            string currentSelected = SaveLoadHandler.Instance.data.selectedModelPath;
+            if (!string.IsNullOrEmpty(currentSelected))
+            {
+                try
+                {
+                    if (string.Equals(Path.GetFullPath(currentSelected), targetPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SaveLoadHandler.Instance.data.selectedModelPath = "";
+                        SaveLoadHandler.Instance.SaveToDisk();
+                        var loader = FindAnyObjectByType<VRMLoader>();
+                        if (loader != null) loader.ActivateDefaultModel();
+                    }
+                }
+                catch { }
+            }
+        }
 
         ReloadAvatars();
     }

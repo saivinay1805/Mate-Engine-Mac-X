@@ -44,13 +44,13 @@ public class DeleteButtonHoldHandler : MonoBehaviour, IPointerDownHandler, IPoin
 
     private IEnumerator HoldToDelete()
     {
-        float duration = 3f;
+        float duration = 1f;
         float timeHeld = 0f;
         int lastSecond = -1;
         float pitch = 1f;
         bool completed = false;
 
-        if (labelText != null) labelText.text = "3";
+        if (labelText != null) labelText.text = "1";
         GetComponent<Button>().interactable = false;
 
         while (isHolding && timeHeld < duration)

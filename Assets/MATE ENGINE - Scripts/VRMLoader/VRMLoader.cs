@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -597,7 +597,7 @@ public class VRMLoader : MonoBehaviour
 
     public GameObject GetCurrentModel()
     {
-        return currentModel;
+        return currentModel != null ? currentModel : mainModel;
     }
 }
 public sealed class GltfInstanceDisposer : MonoBehaviour

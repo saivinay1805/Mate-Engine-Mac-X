@@ -46,11 +46,58 @@ echo "[build_macos] Log: $LOG_FILE"
 
 "$ROOT/Tools/build_native_macos.sh"
 
+echo "[build_macos] Building Apple Silicon (arm64) slice..."
 "$UNITY_BIN" -batchmode -quit \
   -projectPath "$ROOT" \
   -executeMethod MacBuild.BuildFromCommandLine \
-  -output "$OUTPUT" \
-  -logFile "$LOG_FILE"
+  -architecture arm64 \
+  -output "$ROOT/Builds/macOS-arm64/MateEngineX.app" \
+  -logFile "$ROOT/Builds/arm64-build.log"
+
+echo "[build_macos] Building Intel (x86_64) slice..."
+"$UNITY_BIN" -batchmode -quit \
+  -projectPath "$ROOT" \
+  -executeMethod MacBuild.BuildFromCommandLine \
+  -architecture x64 \
+  -output "$ROOT/Builds/macOS-x64/MateEngineX.app" \
+  -logFile "$ROOT/Builds/x64-build.log"
+
+echo "[build_macos] Assembling Universal app bundle..."
+python3 -c "
+import os, subprocess, shutil
+
+root = '$ROOT'
+arm_app = os.path.join(root, 'Builds/macOS-arm64/MateEngineX.app')
+x64_app = os.path.join(root, 'Builds/macOS-x64/MateEngineX.app')
+out_app = os.path.join(root, '$OUTPUT')
+
+print('Assembling Universal app at', out_app)
+if os.path.exists(out_app):
+    shutil.rmtree(out_app)
+
+shutil.copytree(arm_app, out_app, symlinks=True)
+
+binaries_to_merge = [
+    'Contents/MacOS/MateEngineX',
+    'Contents/Frameworks/UnityPlayer.dylib',
+    'Contents/Frameworks/libmonobdwgc-2.0.dylib',
+    'Contents/Frameworks/libmono-native.dylib',
+    'Contents/Frameworks/libMonoPosixHelper.dylib',
+    'Contents/PlugIns/lib_burst_generated.bundle'
+]
+
+for b in binaries_to_merge:
+    p_arm = os.path.join(arm_app, b)
+    p_x64 = os.path.join(x64_app, b)
+    p_out = os.path.join(out_app, b)
+    if os.path.exists(p_arm) and os.path.exists(p_x64):
+        print('Lipo merging:', b)
+        subprocess.run(['lipo', '-create', p_x64, p_arm, '-output', p_out], check=True)
+    else:
+        print('Warning: could not find both slices for', b)
+
+print('Universal assembly complete!')
+"
 
 if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
   APP_BUNDLE="$OUTPUT"

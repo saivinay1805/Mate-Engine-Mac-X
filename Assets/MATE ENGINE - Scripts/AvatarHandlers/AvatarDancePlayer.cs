@@ -193,6 +193,13 @@ namespace CustomDancePlayer
 
         void OnEnable()
         {
+            if (entries.Count == 0)
+            {
+                FindAvatarSmart();
+                LoadAllSources();
+                BuildListUI();
+                if (entries.Count > 0 && currentIndex < 0) currentIndex = 0;
+            }
             if (enableSync)
             {
                 StartCoroutine(Poll());
@@ -233,11 +240,15 @@ namespace CustomDancePlayer
         {
             RefreshAnimatorIfChanged();
 
-            if (entries.Count == 0 && animator != null)
+            if (entries.Count == 0)
             {
-                LoadAllSources();
-                BuildListUI();
-                if (entries.Count > 0 && currentIndex < 0) currentIndex = 0;
+                FindAvatarSmart();
+                if (animator != null || defaultController != null)
+                {
+                    LoadAllSources();
+                    BuildListUI();
+                    if (entries.Count > 0 && currentIndex < 0) currentIndex = 0;
+                }
             }
 
             bool dancingOn = animator != null && HasBool(customDancingParam) && animator.GetBool(customDancingParam);
@@ -410,32 +421,64 @@ namespace CustomDancePlayer
             if (loader != null)
             {
                 var current = loader.GetCurrentModel();
-                if (current != null) found = current.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy);
+                if (current == null) current = loader.mainModel;
+                if (current != null)
+                {
+                    found = current.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy && a.isHuman);
+                    if (found == null)
+                        found = current.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy);
+                }
+            }
+            if (found == null)
+            {
+                var vrmModel = GameObject.Find("VRMModel");
+                if (vrmModel != null)
+                {
+                    found = vrmModel.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy && a.isHuman);
+                    if (found == null)
+                        found = vrmModel.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy);
+                }
             }
             if (found == null)
             {
                 var modelParent = GameObject.Find("Model");
-                if (modelParent != null) found = modelParent.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy);
+                if (modelParent != null)
+                {
+                    found = modelParent.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy && a.isHuman);
+                    if (found == null)
+                        found = modelParent.GetComponentsInChildren<Animator>(true).FirstOrDefault(a => a && a.gameObject.activeInHierarchy);
+                }
             }
             if (found == null)
             {
                 var all = GameObject.FindObjectsByType<Animator>(FindObjectsInactive.Include);
-                found = all.FirstOrDefault(a => a && a.isActiveAndEnabled);
+                // ALWAYS prefer humanoid animators so we don't accidentally grab a halo, accessory, or UI!
+                found = all.FirstOrDefault(a => a && a.isActiveAndEnabled && a.isHuman);
+                if (found == null)
+                {
+                    found = all.FirstOrDefault(a => a && a.isActiveAndEnabled && a.avatar != null && a.avatar.isValid);
+                }
             }
-            if (found != animator)
+            if (found != null && found != animator)
             {
                 animator = found;
                 lastAnimator = animator;
                 defaultController = animator != null ? animator.runtimeAnimatorController : null;
+                if (defaultController == null && loader != null && loader.animatorController != null)
+                {
+                    defaultController = loader.animatorController;
+                }
                 layerIndex = animator != null ? animator.GetLayerIndex(danceLayerName) : -1;
                 stateHash = Animator.StringToHash(danceStateName);
                 overrideController = null;
+                Debug.Log($"[AvatarDancePlayer] FindAvatarSmart found avatar Animator on '{animator.gameObject.name}', controller: {(defaultController != null ? defaultController.name : "null")}");
             }
         }
 
         void RefreshAnimatorIfChanged()
         {
-            if (animator == null || lastAnimator == null || animator != lastAnimator || animator.runtimeAnimatorController != defaultController)
+            if (animator == null || lastAnimator == null || animator != lastAnimator || 
+                (animator.runtimeAnimatorController != defaultController && animator.runtimeAnimatorController != overrideController))
             {
                 FindAvatarSmart();
             }
@@ -446,7 +489,7 @@ namespace CustomDancePlayer
             UnloadEntry(loadedEntry);
             loadedEntry = null;
 
-            foreach (var e in entries) { try { e.bundle?.Unload(true); } catch { } e.bundle = null; e.clip = null; e.audio = null; }
+            foreach (var e in entries) { try { if (!e.isBuiltIn) e.bundle?.Unload(true); } catch { } e.bundle = null; e.clip = null; e.audio = null; }
             entries.Clear();
             byId.Clear();
 
@@ -479,11 +522,29 @@ namespace CustomDancePlayer
         void AddBuiltInDances()
         {
             if (animator == null) FindAvatarSmart();
-            var ctrl = animator != null ? (defaultController != null ? defaultController : animator.runtimeAnimatorController) : defaultController;
-            if (ctrl == null) return;
+            var loader = FindAnyObjectByType<VRMLoader>();
+            RuntimeAnimatorController ctrl = null;
+            if (animator != null && animator.runtimeAnimatorController != null && animator.runtimeAnimatorController != overrideController)
+                ctrl = animator.runtimeAnimatorController;
+            else if (defaultController != null)
+                ctrl = defaultController;
+            else if (loader != null && loader.animatorController != null)
+                ctrl = loader.animatorController;
+
+            if (ctrl == null)
+            {
+                Debug.LogWarning("[AvatarDancePlayer] AddBuiltInDances: No RuntimeAnimatorController found!");
+                return;
+            }
 
             var clips = ctrl.animationClips;
-            if (clips == null || clips.Length == 0) return;
+            if (clips == null || clips.Length == 0)
+            {
+                Debug.LogWarning($"[AvatarDancePlayer] AddBuiltInDances: Controller '{ctrl.name}' has 0 animationClips!");
+                return;
+            }
+
+            Debug.Log($"[AvatarDancePlayer] AddBuiltInDances: Checking {clips.Length} animationClips in controller '{ctrl.name}'.");
 
             var danceNames = new (string clipKey, string displayName)[]
             {
@@ -508,12 +569,21 @@ namespace CustomDancePlayer
                 ("HUS_DANCE_02", "Husbando Dance 02"),
                 ("HUS_DANCE_03", "Husbando Dance 03"),
                 ("HUS_DANCE_04", "Husbando Dance 04"),
+                ("AnkhaZone", "Dance - Ankha Zone"),
                 ("PET_IDLE_16", "Idle - Silly Talk"),
                 ("PET_IDLE_17", "Idle - Look Around"),
                 ("PET_IDLE_18", "Idle - Look Around 2"),
                 ("PET_IDLE_19", "Idle - Stop It"),
                 ("PET_IDLE_20", "Idle - Confusing"),
-                ("PET_IDLE_21", "Idle - Look Around 3")
+                ("PET_IDLE_21", "Idle - Look Around 3"),
+                ("PET_IDLE_22", "Idle - Special Walk"),
+                ("PET_IDLE_UPDATE2_01", "Idle - Update2 01"),
+                ("PET_IDLE_UPDATE2_02", "Idle - Update2 02"),
+                ("PET_IDLE_UPDATE2_03", "Idle - Update2 03"),
+                ("PET_IDLE_UPDATE2_04", "Idle - Update2 04"),
+                ("PET_HAPPY", "Expression - Happy"),
+                ("PET_LAUGHING", "Expression - Laughing"),
+                ("PET_SHY_POINT", "Expression - Shy Point")
             };
 
             var clipMap = new Dictionary<string, AnimationClip>(StringComparer.OrdinalIgnoreCase);
@@ -524,6 +594,7 @@ namespace CustomDancePlayer
                     clipMap[c.name] = c;
             }
 
+            int addedCount = 0;
             for (int i = 0; i < danceNames.Length; i++)
             {
                 var tuple = danceNames[i];
@@ -548,8 +619,10 @@ namespace CustomDancePlayer
                     };
                     entries.Add(e);
                     byId[id] = e;
+                    addedCount++;
                 }
             }
+            Debug.Log($"[AvatarDancePlayer] Added {addedCount} built-in animations. Total entries: {entries.Count}");
         }
 
         void TryAddUnity3D(string path)
@@ -776,7 +849,15 @@ namespace CustomDancePlayer
             RefreshAnimatorIfChanged();
             if (animator == null) return false;
 
-            if (defaultController == null) defaultController = animator.runtimeAnimatorController;
+            if (defaultController == null)
+            {
+                defaultController = animator.runtimeAnimatorController;
+                if (defaultController == null)
+                {
+                    var loader = FindAnyObjectByType<VRMLoader>();
+                    if (loader != null) defaultController = loader.animatorController;
+                }
+            }
             if (layerIndex < 0) layerIndex = animator.GetLayerIndex(danceLayerName);
             if (stateHash == 0) stateHash = Animator.StringToHash(danceStateName);
 
@@ -843,7 +924,10 @@ namespace CustomDancePlayer
             if (placeholderClipCached == null) placeholderClipCached = FindPlaceholderClip(defaultController, placeholderClipName);
             if (overrideController == null || placeholderClipCached == null) { UnfreezeAnimator(); holdDuringTransition = false; yield break; }
 
-            overrideController[placeholderClipName] = e.clip != null ? e.clip : placeholderClipCached;
+            if (placeholderClipCached != null)
+                overrideController[placeholderClipCached] = e.clip != null ? e.clip : placeholderClipCached;
+            else
+                overrideController[placeholderClipName] = e.clip != null ? e.clip : placeholderClipCached;
 
             if (prev != null && prev != e)
             {

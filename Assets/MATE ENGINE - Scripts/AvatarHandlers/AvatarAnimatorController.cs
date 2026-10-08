@@ -70,10 +70,36 @@ public class AvatarAnimatorController : MonoBehaviour
         UnityEngine.Debug.Log("[AvatarAnimatorController] macOS audio monitor init. Default output device: " + MacAudioMonitorBinding.GetDefaultDeviceName());
         MacWindowFixBinding.Install();
 #endif
+
+        Kirurobo.UniWindowMoveHandle.IsMovementBlockedCallback = () =>
+        {
+            return BlockDraggingOverride || MenuActions.IsMovementBlocked() || TutorialMenu.IsActive;
+        };
+        Kirurobo.UniWindowMoveHandle.OnDragStarted -= NotifyDirectDragStart;
+        Kirurobo.UniWindowMoveHandle.OnDragStarted += NotifyDirectDragStart;
+        Kirurobo.UniWindowMoveHandle.OnDragEnded -= NotifyDirectDragEnd;
+        Kirurobo.UniWindowMoveHandle.OnDragEnded += NotifyDirectDragEnd;
+
+        if (GetComponent<AvatarHideHandler>() == null)
+        {
+            gameObject.AddComponent<AvatarHideHandler>();
+        }
     }
 
-    void OnDisable() => CleanupAudioResources();
-    void OnDestroy() => CleanupAudioResources();
+    void OnDisable()
+    {
+        Kirurobo.UniWindowMoveHandle.OnDragStarted -= NotifyDirectDragStart;
+        Kirurobo.UniWindowMoveHandle.OnDragEnded -= NotifyDirectDragEnd;
+        CleanupAudioResources();
+    }
+
+    void OnDestroy()
+    {
+        Kirurobo.UniWindowMoveHandle.OnDragStarted -= NotifyDirectDragStart;
+        Kirurobo.UniWindowMoveHandle.OnDragEnded -= NotifyDirectDragEnd;
+        CleanupAudioResources();
+    }
+
     void OnApplicationQuit() => CleanupAudioResources();
 
     IEnumerator CheckSoundContinuously()
@@ -84,7 +110,7 @@ public class AvatarAnimatorController : MonoBehaviour
 
     void CheckForSound()
     {
-        if (MenuActions.IsMovementBlocked() || !enableDancing)
+        if (MenuActions.IsMovementBlocked() || !enableDancing || AvatarHideHandler.IsHiding)
         {
             if (isDancing) SetDancing(false);
             return;
@@ -214,18 +240,26 @@ public class AvatarAnimatorController : MonoBehaviour
         }
         else if (!mouseHeld && isDragging) SetDragging(false);
 
-        idleTimer += Time.deltaTime;
-        if (idleTimer > IDLE_SWITCH_TIME)
+        if (AvatarHideHandler.IsHiding)
         {
             idleTimer = 0f;
-            int next = (idleState + 1) % totalIdleAnimations;
-            if (next == 0) animator.SetFloat(idleIndexParam, 0);
-            else
+            if (isDancing) SetDancing(false);
+        }
+        else
+        {
+            idleTimer += Time.deltaTime;
+            if (idleTimer > IDLE_SWITCH_TIME)
             {
-                if (idleTransitionCoroutine != null) StopCoroutine(idleTransitionCoroutine);
-                idleTransitionCoroutine = StartCoroutine(SmoothIdleTransition(next));
+                idleTimer = 0f;
+                int next = (idleState + 1) % totalIdleAnimations;
+                if (next == 0) animator.SetFloat(idleIndexParam, 0);
+                else
+                {
+                    if (idleTransitionCoroutine != null) StopCoroutine(idleTransitionCoroutine);
+                    idleTransitionCoroutine = StartCoroutine(SmoothIdleTransition(next));
+                }
+                idleState = next;
             }
-            idleState = next;
         }
         UpdateIdleStatus();
 
@@ -246,6 +280,25 @@ public class AvatarAnimatorController : MonoBehaviour
             }
         }
     }
+
+    public void NotifyDirectDragStart()
+    {
+        if (BlockDraggingOverride || MenuActions.IsMovementBlocked() || TutorialMenu.IsActive) return;
+        SetDragging(true);
+        mouseHeld = true;
+        dragLockTimer = 0.30f;
+        SetDancing(false);
+    }
+
+    public void NotifyDirectDragEnd()
+    {
+        mouseHeld = false;
+        if (dragLockTimer <= 0f)
+        {
+            SetDragging(false);
+        }
+    }
+
     void SetDragging(bool value)
     {
         isDragging = value;

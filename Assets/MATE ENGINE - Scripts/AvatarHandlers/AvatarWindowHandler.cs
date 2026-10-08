@@ -326,7 +326,7 @@ public class AvatarWindowHandler : MonoBehaviour
                 if (wantTopmost) MacWindowHelper.BringSelfToFront();
             }
 
-            if (snappedHWND == IntPtr.Zero && !controller.isDragging)
+            if (snappedHWND == IntPtr.Zero && !controller.isDragging && !AvatarHideHandler.IsHiding)
                 MacWindowHelper.ConstrainWindowToScreens();
         }
 #endif
@@ -1219,6 +1219,7 @@ public class AvatarWindowHandler : MonoBehaviour
     {
         for (int i = 0; i < otherQuadGOs.Count; i++)
         {
+            if (otherQuadGOs[i] == null) continue;
             bool on = i < activeCount;
             if (otherQuadGOs[i].activeSelf != on) otherQuadGOs[i].SetActive(on);
         }

@@ -28,6 +28,22 @@ public class RemoveTaskbarApp : MonoBehaviour
     private bool _isHidden = true;
     public bool IsHidden => _isHidden;
 
+    void Awake()
+    {
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i].Equals("--instance", StringComparison.OrdinalIgnoreCase) && int.TryParse(args[i + 1], out int idx) && idx > 0)
+            {
+                _isHidden = true;
+                MacSystemBridge.MacSys_SetDockIconVisible(0);
+                return;
+            }
+        }
+#endif
+    }
+
     void Start()
     {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
@@ -39,6 +55,16 @@ public class RemoveTaskbarApp : MonoBehaviour
             _isHidden = true;
         }
 #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i].Equals("--instance", StringComparison.OrdinalIgnoreCase) && int.TryParse(args[i + 1], out int idx) && idx > 0)
+            {
+                _isHidden = true;
+                MacSystemBridge.MacSys_SetDockIconVisible(0);
+                return;
+            }
+        }
         _isHidden = false;
         ApplyDockMode();
 #endif

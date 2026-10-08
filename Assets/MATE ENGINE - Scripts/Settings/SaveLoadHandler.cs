@@ -13,6 +13,8 @@ public class SaveLoadHandler : MonoBehaviour
     // Multi-Instance Variablen
     private static string fileName = "settings.json";
     private static string customDataDir = null;
+    private int currentInstanceIndex = 0;
+    private bool isFirstLaunch = false;
 
     private string BaseDir => string.IsNullOrEmpty(customDataDir)
         ? Application.persistentDataPath
@@ -35,6 +37,9 @@ public class SaveLoadHandler : MonoBehaviour
         var args = Environment.GetCommandLineArgs();
         for (int i = 0; i < args.Length; i++)
         {
+            if (args[i].Equals("--instance", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                int.TryParse(args[i + 1], out currentInstanceIndex);
+
             if (args[i].Equals("--savefile", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
                 fileName = args[i + 1].Trim('"');
 
@@ -102,9 +107,16 @@ public class SaveLoadHandler : MonoBehaviour
 
         uwc.windowSize = new Vector2(vw, vh);
         float screenH = MacWindowHelper.GetGlobalScreenHeight();
+
+        float posX = vx;
+        if (isFirstLaunch && currentInstanceIndex > 0)
+        {
+            posX = Mathf.Clamp(vx + (240f * currentInstanceIndex), vx, vx + Mathf.Max(0f, vw - 400f));
+        }
+
         // AppKit origin is bottom-left, Y up: place the window's top-left at the
         // visible area's top-left.
-        uwc.windowPosition = new Vector2(vx, screenH - (vy + vh));
+        uwc.windowPosition = new Vector2(posX, screenH - (vy + vh));
     }
 #endif
 
@@ -156,7 +168,35 @@ public class SaveLoadHandler : MonoBehaviour
         }
         else
         {
-            data = new SettingsData();
+            isFirstLaunch = true;
+            if (currentInstanceIndex > 0)
+            {
+                string mainSettingsPath = Path.Combine(Application.persistentDataPath, "settings.json");
+                if (File.Exists(mainSettingsPath))
+                {
+                    try
+                    {
+                        string mainJson = File.ReadAllText(mainSettingsPath);
+                        data = JsonConvert.DeserializeObject<SettingsData>(mainJson);
+                    }
+                    catch
+                    {
+                        data = new SettingsData();
+                    }
+                }
+                else
+                {
+                    data = new SettingsData();
+                }
+
+                if (data == null) data = new SettingsData();
+                data.tutorialDone = true;
+                SaveToDisk();
+            }
+            else
+            {
+                data = new SettingsData();
+            }
         }
 
         if (data == null)

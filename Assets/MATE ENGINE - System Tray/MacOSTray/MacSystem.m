@@ -439,9 +439,29 @@ void MacSys_GetCursorPos(float *x, float *y)
     *y = (float)loc.y;
 }
 
+int MacSys_GetPressedMouseButtons(void)
+{
+    return (int)[NSEvent pressedMouseButtons];
+}
+
 int MacSys_IsAppActive(void)
 {
     return [NSApp isActive];
+}
+
+void MacSys_SetOverlayWindowLevel(void)
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (NSWindow *window in [NSApp windows]) {
+            // Level 101 corresponds to kCGOverlayWindowLevel / kCGPopUpMenuWindowLevel
+            [window setLevel:101];
+            [window setCollectionBehavior:
+                (NSWindowCollectionBehaviorCanJoinAllSpaces |
+                 NSWindowCollectionBehaviorIgnoresCycle |
+                 NSWindowCollectionBehaviorFullScreenAuxiliary |
+                 NSWindowCollectionBehaviorFullScreenNone)];
+        }
+    });
 }
 
 long MacSys_GetSpaceChangeTick(void)

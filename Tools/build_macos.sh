@@ -127,7 +127,7 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
 
   CODESIGN_FLAGS=()
   if [ "$SIGN_IDENTITY" != "-" ]; then
-    CODESIGN_FLAGS=(--options runtime --timestamp)
+    CODESIGN_FLAGS=(--options runtime)
   fi
 
   ENTITLEMENTS=""
@@ -136,8 +136,8 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
   fi
 
   echo "[build_macos] Signing $APP_BUNDLE with '$SIGN_IDENTITY' (flags: ${CODESIGN_FLAGS[*]:-none})"
-  # Sign all dynamic libraries, frameworks, bundle files/directories, and helper executables
-  find "$APP_BUNDLE/Contents" \( -name '*.bundle' -o -name '*.dylib' -o -name '*.framework' -o -name 'matesfbhelper' \) -print0 \
+  # Sign all dynamic libraries, frameworks, plugin bundles, and helper executables
+  find "$APP_BUNDLE/Contents/PlugIns" "$APP_BUNDLE/Contents/Frameworks" "$APP_BUNDLE/Contents/MacOS" \( -name '*.bundle' -o -name '*.dylib' -o -name '*.framework' -o -name 'matesfbhelper' \) -print0 2>/dev/null \
     | xargs -0 -n1 codesign --force "${CODESIGN_FLAGS[@]}" --sign "$SIGN_IDENTITY"
 
   # Sign main executable

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UniGLTF;
 using UnityEngine;
 
@@ -35,10 +35,11 @@ namespace VRM
             // Materials
             for (var materialIdx = 0; materialIdx < data.GLTF.materials.Count; ++materialIdx)
             {
-                var material = data.GLTF.materials[materialIdx];
-                var vrmMaterial = vrm.materialProperties[materialIdx];
+                var vrmMaterial = (vrm?.materialProperties != null && materialIdx < vrm.materialProperties.Count)
+                    ? vrm.materialProperties[materialIdx]
+                    : null;
 
-                if (vrmMaterial.shader == VRM.glTF_VRM_Material.VRM_USE_GLTFSHADER)
+                if (vrmMaterial == null || vrmMaterial.shader == VRM.glTF_VRM_Material.VRM_USE_GLTFSHADER)
                 {
                     // Unlit or PBR
                     foreach (var kv in GltfPbrTextureImporter.EnumerateAllTextures(data, materialIdx))

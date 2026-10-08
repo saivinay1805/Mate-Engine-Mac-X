@@ -260,6 +260,11 @@ namespace Kirurobo
         private bool onObject = true;
         
         /// <summary>
+        /// Public accessor indicating whether the mouse pointer is currently on the mascot/object.
+        /// </summary>
+        public bool isOnObject => onObject;
+        
+        /// <summary>
         /// Pixel color under the mouse pointer. (Read only)
         /// </summary>
         [SerializeField, ReadOnly, Tooltip("Pixel color under the mouse pointer. (Read only)")]

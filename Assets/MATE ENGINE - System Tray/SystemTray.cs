@@ -33,6 +33,16 @@ public class SystemTray : MonoBehaviour
         TrayIcon.OnBuildMenu = BuildMenu;
         TrayIcon.Init("App", iconName, icon, BuildMenu());
 #elif UNITY_STANDALONE_OSX
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i].Equals("--instance", StringComparison.OrdinalIgnoreCase) && int.TryParse(args[i + 1], out int idx) && idx > 0)
+            {
+                // Secondary instance: no status item in menu bar
+                return;
+            }
+        }
+
         MacSystemBridge.MacSys_CreateStatusItem(string.IsNullOrEmpty(iconName) ? "MateEngine" : iconName);
         if (icon != null)
         {
@@ -53,7 +63,7 @@ public class SystemTray : MonoBehaviour
     }
 
 #if UNITY_STANDALONE_OSX
-    private void RebuildMacMenu()
+    public void RebuildMacMenu()
     {
         macActions.Clear();
         MacSystemBridge.MacSys_ResetMenu();
@@ -115,8 +125,59 @@ public class SystemTray : MonoBehaviour
             LocomotionHelper.ToggleWalkingMode(this);
         }));
 
+        context.Add(("---", () => { }));
+
+        context.Add(("Toggle Settings Menu", () =>
+        {
+            ToggleSettingsMenu();
+        }));
+
+        var launcher = LaunchMateEngineInstances.Instance != null
+            ? LaunchMateEngineInstances.Instance
+            : FindAnyObjectByType<LaunchMateEngineInstances>();
+
+        if (launcher != null && launcher.CurrentInstanceIndex == 0)
+        {
+            context.Add(("Open Multi-Avatar Window", () =>
+            {
+                launcher.ToggleInstancesPanel();
+            }));
+
+            for (int i = 1; i <= Mathf.Min(launcher.instances.Count, 3); i++)
+            {
+                int idx = i;
+                bool alive = launcher.IsInstanceAlive(idx);
+                string label = alive ? $"✔ Avatar {idx} (Running - Click to Close)" : $"✖ Launch Avatar {idx}";
+                context.Add((label, () =>
+                {
+                    if (alive)
+                        launcher.CloseInstance(idx);
+                    else
+                        launcher.LaunchInstance(idx);
+#if UNITY_STANDALONE_OSX
+                    RebuildMacMenu();
+#endif
+                }));
+            }
+        }
+
+        context.Add(("---", () => { }));
+
         context.Add(("Quit MateEngine", QuitApp));
         return context;
+    }
+
+    private void ToggleSettingsMenu()
+    {
+        var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+        foreach (var t in allTransforms)
+        {
+            if (t != null && t.name == "Main Menu")
+            {
+                t.gameObject.SetActive(!t.gameObject.activeSelf);
+                return;
+            }
+        }
     }
 
     private bool GetToggleState(TrayAction action)

@@ -36,14 +36,24 @@ public class LaunchMateEngineInstances : MonoBehaviour
     private string persistentPath;
     private int currentInstanceIndex = 0;
     private string pidPath = null;
+    private GameObject instancesPanelCache = null;
+
+    public static LaunchMateEngineInstances Instance { get; private set; }
+    public int CurrentInstanceIndex => currentInstanceIndex;
 
     void Awake()
     {
+        Instance = this;
         persistentPath = Application.persistentDataPath;
         DetectCurrentInstance();
 
         if (currentInstanceIndex > 0)
+        {
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            MacSystemBridge.MacSys_SetDockIconVisible(0);
+#endif
             ApplySecondaryHide();
+        }
 
         for (int i = 0; i < instances.Count; i++)
         {
@@ -51,7 +61,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
             if (instances[i] != null && instances[i].button != null)
             {
                 int captured = index;
-                instances[i].button.onClick.AddListener(() => LaunchInstance(captured));
+                instances[i].button.onClick.AddListener(() => ToggleInstance(captured));
             }
             UpdateButtonText(index, IsInstanceAlive(index));
         }
@@ -63,7 +73,19 @@ public class LaunchMateEngineInstances : MonoBehaviour
             WritePidFile();
     }
 
-    void OnApplicationQuit() => CleanupPidFile();
+    void OnApplicationQuit()
+    {
+        if (currentInstanceIndex == 0)
+        {
+            for (int i = 1; i <= 5; i++)
+            {
+                if (IsInstanceAlive(i))
+                    CloseInstance(i);
+            }
+        }
+        CleanupPidFile();
+    }
+
     void OnDestroy() => CleanupPidFile();
 
     void DetectCurrentInstance()
@@ -85,6 +107,17 @@ public class LaunchMateEngineInstances : MonoBehaviour
         var targets = GetHideTargets();
         foreach (var go in targets)
             if (go != null) go.SetActive(false);
+
+        // Hide main settings menu and tutorial roots on secondary instances so they appear cleanly
+        var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+        foreach (var t in allTransforms)
+        {
+            if (t == null) continue;
+            if (t.name == "Main Menu" || t.name == "Show Instances" || t.name == "Tutorial" || t.name == "TutorialRoot")
+            {
+                if (t.gameObject != null) t.gameObject.SetActive(false);
+            }
+        }
     }
 
     List<GameObject> GetHideTargets()
@@ -124,6 +157,14 @@ public class LaunchMateEngineInstances : MonoBehaviour
         }
     }
 
+    public void ToggleInstance(int index)
+    {
+        if (IsInstanceAlive(index))
+            CloseInstance(index);
+        else
+            LaunchInstance(index);
+    }
+
     public void LaunchInstance(int index)
     {
         if (IsInstanceAlive(index))
@@ -133,16 +174,40 @@ public class LaunchMateEngineInstances : MonoBehaviour
             return;
         }
 
+        string saveFile = $"settings_instance{index}.json";
+        string dataDir = $"Instance_{index}";
+        string args = $"--instance {index} --savefile \"{saveFile}\" --datadir \"{dataDir}\"";
+
+#if UNITY_STANDALONE_OSX
+        string bundle = GetAppBundlePath();
+        if (Directory.Exists(bundle))
+        {
+            try
+            {
+                var openInfo = new ProcessStartInfo
+                {
+                    FileName = "/usr/bin/open",
+                    Arguments = $"-n \"{bundle}\" --args {args}",
+                    UseShellExecute = false
+                };
+                Process.Start(openInfo);
+                UpdateButtonText(index, true);
+                UnityEngine.Debug.Log($"[Launcher] Started Instance {index} via open -n bundle: {bundle}");
+                return;
+            }
+            catch (Exception exOpen)
+            {
+                UnityEngine.Debug.LogError("[Launcher] open -n bundle fallback failed: " + exOpen.Message);
+            }
+        }
+#endif
+
         string exePath = GetExecutablePath();
         if (!File.Exists(exePath))
         {
             UnityEngine.Debug.LogError("[Launcher] Executable not found: " + exePath);
             return;
         }
-
-        string saveFile = $"settings_instance{index}.json";
-        string dataDir = $"Instance_{index}";
-        string args = $"--instance {index} --savefile \"{saveFile}\" --datadir \"{dataDir}\"";
 
         try
         {
@@ -175,13 +240,50 @@ public class LaunchMateEngineInstances : MonoBehaviour
         }
     }
 
+    public void CloseInstance(int index)
+    {
+        if (activeInstances.TryGetValue(index, out var p))
+        {
+            try
+            {
+                if (p != null && !p.HasExited)
+                    p.Kill();
+            }
+            catch { }
+            activeInstances.Remove(index);
+        }
+
+        string pidFile = Path.Combine(persistentPath, $"instance_{index}.pid");
+        if (File.Exists(pidFile))
+        {
+            try
+            {
+                string txt = File.ReadAllText(pidFile).Trim();
+                if (int.TryParse(txt, out int pid))
+                {
+                    try
+                    {
+                        var proc = Process.GetProcessById(pid);
+                        if (!proc.HasExited)
+                            proc.Kill();
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            try { File.Delete(pidFile); } catch { }
+        }
+
+        UpdateButtonText(index, false);
+    }
+
     void RefreshStatusPoll()
     {
         for (int i = 1; i <= instances.Count; i++)
             UpdateButtonText(i, IsInstanceAlive(i));
     }
 
-    bool IsInstanceAlive(int index)
+    public bool IsInstanceAlive(int index)
     {
         if (activeInstances.TryGetValue(index, out var p))
         {
@@ -210,6 +312,30 @@ public class LaunchMateEngineInstances : MonoBehaviour
         return false;
     }
 
+    public GameObject GetInstancesPanel()
+    {
+        if (instancesPanelCache != null) return instancesPanelCache;
+        var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+        foreach (var t in allTransforms)
+        {
+            if (t != null && t.name == "Show Instances")
+            {
+                instancesPanelCache = t.gameObject;
+                return instancesPanelCache;
+            }
+        }
+        return null;
+    }
+
+    public void ToggleInstancesPanel()
+    {
+        var panel = GetInstancesPanel();
+        if (panel != null)
+        {
+            panel.SetActive(!panel.activeSelf);
+        }
+    }
+
     private string GetExecutablePath()
     {
 #if UNITY_STANDALONE_WIN
@@ -218,14 +344,42 @@ public class LaunchMateEngineInstances : MonoBehaviour
             exeName += ".exe";
         return Path.GetFullPath(Path.Combine(Application.dataPath, $"../{exeName}"));
 #elif UNITY_STANDALONE_OSX
-        string appBundle = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
         string exeName = Path.GetFileNameWithoutExtension(executableName);
         if (string.IsNullOrEmpty(exeName)) exeName = "MateEngineX";
-        return Path.Combine(appBundle, "Contents", "MacOS", exeName);
+
+        string path1 = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "MacOS", exeName));
+        if (File.Exists(path1)) return path1;
+
+        string path2 = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "MacOS", exeName));
+        if (File.Exists(path2)) return path2;
+
+        string bundle = GetAppBundlePath();
+        string path3 = Path.Combine(bundle, "Contents", "MacOS", exeName);
+        if (File.Exists(path3)) return path3;
+
+        return path1;
 #else
         return Path.GetFullPath(Path.Combine(Application.dataPath, $"../{executableName}"));
 #endif
     }
+
+#if UNITY_STANDALONE_OSX
+    private string GetAppBundlePath()
+    {
+        string bundle1 = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", ".."));
+        if (Directory.Exists(bundle1) && bundle1.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            return bundle1;
+
+        string bundle2 = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".."));
+        if (Directory.Exists(bundle2) && bundle2.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            return bundle2;
+
+        string bundle3 = "/Applications/MateEngineX.app";
+        if (Directory.Exists(bundle3)) return bundle3;
+
+        return bundle1;
+    }
+#endif
 
     void UpdateButtonText(int index, bool running)
     {

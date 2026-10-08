@@ -52,6 +52,18 @@ public class TutorialMenu : MonoBehaviour
 
     private void Start()
     {
+        var args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i].Equals("--instance", System.StringComparison.OrdinalIgnoreCase) && int.TryParse(args[i + 1], out int idx) && idx > 0)
+            {
+                if (tutorialRoot != null) tutorialRoot.SetActive(false);
+                gameObject.SetActive(false);
+                IsActive = false;
+                return;
+            }
+        }
+
         if (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data.tutorialDone)
         {
             if (tutorialRoot != null) tutorialRoot.SetActive(false);

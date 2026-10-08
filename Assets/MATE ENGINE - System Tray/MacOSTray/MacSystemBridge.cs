@@ -73,6 +73,9 @@ public static class MacSystemBridge
     public static extern void MacSys_GetCursorPos(out float x, out float y);
 
     [DllImport("MacSystem")]
+    public static extern int MacSys_GetPressedMouseButtons();
+
+    [DllImport("MacSystem")]
     public static extern float MacSys_GetMainDisplayHeight();
 
     [DllImport("MacSystem")]
@@ -83,6 +86,9 @@ public static class MacSystemBridge
 
     [DllImport("MacSystem")]
     public static extern int MacSys_IsAppActive();
+
+    [DllImport("MacSystem")]
+    public static extern void MacSys_SetOverlayWindowLevel();
 
     [DllImport("MacSystem")]
     public static extern long MacSys_GetSpaceChangeTick();
@@ -139,6 +145,12 @@ public static class MacSystemBridge
     {
         EnsurePump();
         InstallInputMonitors();
+        SetOverlayWindowLevel();
+    }
+
+    public static void SetOverlayWindowLevel()
+    {
+        try { MacSys_SetOverlayWindowLevel(); } catch { }
     }
 
     private static void EnsurePump()
@@ -218,6 +230,17 @@ public static class MacSystemBridge
     {
         try { return MacSys_IsAnyKeyPressed() != 0; }
         catch (Exception) { return false; }
+    }
+
+    public static int GetPressedMouseButtons()
+    {
+        try { return MacSys_GetPressedMouseButtons(); }
+        catch (Exception) { return 0; }
+    }
+
+    public static bool IsLeftMouseButtonPressed()
+    {
+        return (GetPressedMouseButtons() & 1) != 0;
     }
 
     public static bool ConsumeGlobalInputActivity()

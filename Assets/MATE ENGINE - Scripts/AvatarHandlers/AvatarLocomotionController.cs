@@ -164,7 +164,7 @@ public sealed class AvatarLocomotionController : MonoBehaviour
 
     void Update()
     {
-        if (!EnableLocomotion)
+        if (!EnableLocomotion || AvatarHideHandler.IsHiding)
         {
             StopWalking();
             return;

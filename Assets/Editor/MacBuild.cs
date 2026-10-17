@@ -175,20 +175,73 @@ public static class MacBuild
     {
         if (target != BuildTarget.StandaloneOSX) return;
 
-        string helperSrc = Path.Combine(Application.dataPath, "Plugins/MacOS/matesfbhelper");
-        string helperDst = Path.Combine(pathToBuiltProject, "Contents/MacOS/matesfbhelper");
-        if (File.Exists(helperSrc))
+        string[] helpers = new string[] { "matesfbhelper", "mateworkshop" };
+        foreach (var helper in helpers)
+        {
+            string helperSrc = Path.Combine(Application.dataPath, $"Plugins/MacOS/{helper}");
+            string helperDst = Path.Combine(pathToBuiltProject, $"Contents/MacOS/{helper}");
+            if (File.Exists(helperSrc))
+            {
+                try
+                {
+                    File.Copy(helperSrc, helperDst, true);
+                    var chmod = System.Diagnostics.Process.Start("chmod", $"+x \"{helperDst}\"");
+                    chmod?.WaitForExit();
+                    Debug.Log($"[MacBuild] PostProcessBuild: Copied {helper} to {helperDst}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[MacBuild] PostProcessBuild failed to copy {helper}: {ex.Message}");
+                }
+            }
+        }
+
+        string scriptSrc = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Tools/download_workshop.sh");
+        string scriptDst = Path.Combine(pathToBuiltProject, "Contents/Resources/download_workshop.sh");
+        string oldScriptDst = Path.Combine(pathToBuiltProject, "Contents/MacOS/download_workshop.sh");
+        if (File.Exists(oldScriptDst)) File.Delete(oldScriptDst);
+        if (File.Exists(scriptSrc))
         {
             try
             {
-                File.Copy(helperSrc, helperDst, true);
-                var chmod = System.Diagnostics.Process.Start("chmod", $"+x \"{helperDst}\"");
+                Directory.CreateDirectory(Path.GetDirectoryName(scriptDst));
+                File.Copy(scriptSrc, scriptDst, true);
+                var chmod = System.Diagnostics.Process.Start("chmod", $"+x \"{scriptDst}\"");
                 chmod?.WaitForExit();
-                Debug.Log($"[MacBuild] PostProcessBuild: Copied matesfbhelper to {helperDst}");
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[MacBuild] PostProcessBuild failed to copy matesfbhelper: {ex.Message}");
+                Debug.LogWarning($"[MacBuild] PostProcessBuild failed to copy download_workshop.sh: {ex.Message}");
+            }
+        }
+
+        string htmlSrc = Path.Combine(Application.dataPath, "MATE ENGINE - System Tray/MacOSTray/workshop_ui.html");
+        string htmlDst = Path.Combine(pathToBuiltProject, "Contents/Resources/workshop_ui.html");
+        if (File.Exists(htmlSrc))
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(htmlDst));
+                File.Copy(htmlSrc, htmlDst, true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MacBuild] PostProcessBuild failed to copy workshop_ui.html: {ex.Message}");
+            }
+        }
+
+        string iconSrc = Path.Combine(Application.dataPath, "MATE ENGINE - System Tray/MacOSTray/mate_icon.png");
+        string iconDst = Path.Combine(pathToBuiltProject, "Contents/Resources/mate_icon.png");
+        if (File.Exists(iconSrc))
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(iconDst));
+                File.Copy(iconSrc, iconDst, true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[MacBuild] PostProcessBuild failed to copy mate_icon.png: {ex.Message}");
             }
         }
     }

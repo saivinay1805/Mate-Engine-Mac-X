@@ -61,7 +61,7 @@ public class RemoveTaskbarApp : MonoBehaviour
             if (args[i].Equals("--instance", StringComparison.OrdinalIgnoreCase) && int.TryParse(args[i + 1], out int idx) && idx > 0)
             {
                 _isHidden = true;
-                MacSystemBridge.MacSys_SetDockIconVisible(0);
+                StartCoroutine(EnforceSecondaryDockHide());
                 return;
             }
         }
@@ -69,6 +69,18 @@ public class RemoveTaskbarApp : MonoBehaviour
         ApplyDockMode();
 #endif
     }
+
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+    private System.Collections.IEnumerator EnforceSecondaryDockHide()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            MacSystemBridge.MacSys_SetDockIconVisible(0);
+            yield return new WaitForSeconds(0.4f);
+        }
+        MacSystemBridge.MacSys_SetDockIconVisible(0);
+    }
+#endif
 
     public void ToggleAppMode()
     {

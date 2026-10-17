@@ -81,6 +81,11 @@ public class AvatarLibraryMenu : MonoBehaviour
     {
         libraryPanel.SetActive(true);
 
+        if (MateEngine.Workshop.SteamWorkshopBrowser.Instance != null)
+        {
+            MateEngine.Workshop.SteamWorkshopBrowser.Instance.InjectWorkshopButtonsToExistingMenus();
+        }
+
         var auto = FindAnyObjectByType<SteamWorkshopAutoLoader>();
         if (auto != null)
         {
@@ -95,6 +100,14 @@ public class AvatarLibraryMenu : MonoBehaviour
     {
         libraryPanel.SetActive(false);
         if (liveUpdateRoutine != null) { StopCoroutine(liveUpdateRoutine); liveUpdateRoutine = null; }
+    }
+
+    public void OpenWorkshopBrowser()
+    {
+        if (MateEngine.Workshop.SteamWorkshopBrowser.Instance != null)
+        {
+            MateEngine.Workshop.SteamWorkshopBrowser.Instance.OpenBrowser();
+        }
     }
 
     private IEnumerator LiveUpdateWhileOpen()

@@ -126,3 +126,7 @@ build_executable() {
 build_executable matesfbhelper "$SRC_DIR/matesfbhelper.m" \
   -framework Cocoa
 
+build_executable mateworkshop "$SRC_DIR/mateworkshop.m" \
+  -framework Cocoa \
+  -framework WebKit
+

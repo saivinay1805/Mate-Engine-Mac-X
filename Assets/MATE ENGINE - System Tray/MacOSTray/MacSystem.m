@@ -299,8 +299,10 @@ void MacSys_AddSeparator(void)
 
 void MacSys_SetDockIconVisible(int visible)
 {
-    [NSApp setActivationPolicy:(visible ? NSApplicationActivationPolicyRegular
-                                       : NSApplicationActivationPolicyAccessory)];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp setActivationPolicy:(visible ? NSApplicationActivationPolicyRegular
+                                           : NSApplicationActivationPolicyAccessory)];
+    });
 }
 
 int MacSys_IsDockIconVisible(void)

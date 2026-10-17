@@ -56,6 +56,34 @@ public class VRMLoader : MonoBehaviour
             LoadVRM(savedPath);
     }
 
+    private float nextCmdCheckTime = 0f;
+    void Update()
+    {
+        if (Time.time < nextCmdCheckTime) return;
+        nextCmdCheckTime = Time.time + 0.4f;
+
+        string cmdFile = Path.Combine(Application.persistentDataPath, "load_command.txt");
+        if (File.Exists(cmdFile))
+        {
+            try
+            {
+                string targetPath = File.ReadAllText(cmdFile).Trim();
+                File.Delete(cmdFile);
+                if (!string.IsNullOrEmpty(targetPath) && File.Exists(targetPath))
+                {
+                    Debug.Log("[VRMLoader] Loading external avatar request: " + targetPath);
+                    LoadVRM(targetPath);
+                    var lib = FindAnyObjectByType<AvatarLibraryMenu>();
+                    if (lib != null) lib.ReloadAvatars();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[VRMLoader] Failed to read load_command.txt: " + ex.Message);
+            }
+        }
+    }
+
     public void ShowLoadButtonPublic() => ShowLoadButton();
 
     private void ShowLoadButton()

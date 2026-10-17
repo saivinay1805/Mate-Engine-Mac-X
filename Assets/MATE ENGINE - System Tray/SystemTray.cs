@@ -132,6 +132,23 @@ public class SystemTray : MonoBehaviour
             ToggleSettingsMenu();
         }));
 
+        context.Add(("Browse Steam Workshop (F3)", () =>
+        {
+            if (MateEngine.Workshop.SteamWorkshopBrowser.Instance != null)
+                MateEngine.Workshop.SteamWorkshopBrowser.Instance.ToggleWorkshopBrowser();
+            else
+            {
+                var go = new GameObject("SteamWorkshopBrowser");
+                var browser = go.AddComponent<MateEngine.Workshop.SteamWorkshopBrowser>();
+                browser.OpenBrowser();
+            }
+        }));
+
+        context.Add(("Toggle Dance Player (H)", () =>
+        {
+            ToggleDancePlayerMenu();
+        }));
+
         var launcher = LaunchMateEngineInstances.Instance != null
             ? LaunchMateEngineInstances.Instance
             : FindAnyObjectByType<LaunchMateEngineInstances>();
@@ -173,6 +190,26 @@ public class SystemTray : MonoBehaviour
         foreach (var t in allTransforms)
         {
             if (t != null && t.name == "Main Menu")
+            {
+                t.gameObject.SetActive(!t.gameObject.activeSelf);
+                return;
+            }
+        }
+    }
+
+    private void ToggleDancePlayerMenu()
+    {
+        var dance = FindAnyObjectByType<CustomDancePlayer.AvatarDanceHandler>();
+        if (dance != null)
+        {
+            dance.ToggleDancePlayerMenu();
+            return;
+        }
+
+        var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+        foreach (var t in allTransforms)
+        {
+            if (t != null && t.name == "DancePlayerMenuCanvas")
             {
                 t.gameObject.SetActive(!t.gameObject.activeSelf);
                 return;

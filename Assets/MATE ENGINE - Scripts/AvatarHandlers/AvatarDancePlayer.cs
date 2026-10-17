@@ -238,6 +238,11 @@ namespace CustomDancePlayer
 
         void Update()
         {
+            if (Input.GetKeyDown(KeyCode.H))
+            {
+                ToggleDancePlayerMenu();
+            }
+
             RefreshAnimatorIfChanged();
 
             if (entries.Count == 0)
@@ -945,6 +950,12 @@ namespace CustomDancePlayer
             UpdateAuthorLabel(e.author);
             UpdateTimeLabels(0f, currentTotalSeconds);
 
+            if (animator != null)
+            {
+                SetupMMDCameraHierarchy(animator.gameObject);
+                ResetMMDCameraHierarchy(animator.gameObject);
+            }
+
             SetWaiting(false);
             SetDancing(true);
             UnfreezeAnimator();
@@ -952,6 +963,79 @@ namespace CustomDancePlayer
 
             holdDuringTransition = false;
             playRoutine = null;
+        }
+
+        public void ToggleDancePlayerMenu()
+        {
+            if (contentObject != null)
+            {
+                var canvas = contentObject.GetComponentInParent<Canvas>(true);
+                if (canvas != null)
+                {
+                    canvas.gameObject.SetActive(!canvas.gameObject.activeSelf);
+                    return;
+                }
+            }
+
+            var allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (var t in allTransforms)
+            {
+                if (t != null && t.name == "DancePlayerMenuCanvas")
+                {
+                    t.gameObject.SetActive(!t.gameObject.activeSelf);
+                    return;
+                }
+            }
+        }
+
+        public static void SetupMMDCameraHierarchy(GameObject avatar)
+        {
+            if (avatar == null) return;
+            Transform camRoot = avatar.transform.Find("Camera_root");
+            if (camRoot != null) return;
+
+            GameObject rootGO = new GameObject("Camera_root");
+            rootGO.transform.SetParent(avatar.transform, false);
+            rootGO.transform.localPosition = Vector3.zero;
+            rootGO.transform.localRotation = Quaternion.Euler(0, 180, 0);
+
+            GameObject child1GO = new GameObject("Camera_root_1");
+            child1GO.transform.SetParent(rootGO.transform, false);
+            child1GO.transform.localPosition = Vector3.zero;
+            child1GO.transform.localRotation = Quaternion.identity;
+
+            GameObject cameraNode = new GameObject("Camera");
+            cameraNode.transform.SetParent(child1GO.transform, false);
+            cameraNode.transform.localPosition = Vector3.zero;
+            cameraNode.transform.localRotation = Quaternion.identity;
+
+            var cam = cameraNode.AddComponent<Camera>();
+            cam.enabled = false;
+        }
+
+        public static void ResetMMDCameraHierarchy(GameObject avatar)
+        {
+            if (avatar == null) return;
+            Transform camRoot = avatar.transform.Find("Camera_root");
+            if (camRoot != null)
+            {
+                camRoot.localPosition = Vector3.zero;
+                camRoot.localRotation = Quaternion.Euler(0, 180, 0);
+
+                Transform child1 = camRoot.Find("Camera_root_1");
+                if (child1 != null)
+                {
+                    child1.localPosition = Vector3.zero;
+                    child1.localRotation = Quaternion.identity;
+
+                    Transform cameraNode = child1.Find("Camera");
+                    if (cameraNode != null)
+                    {
+                        cameraNode.localPosition = Vector3.zero;
+                        cameraNode.localRotation = Quaternion.identity;
+                    }
+                }
+            }
         }
 
 

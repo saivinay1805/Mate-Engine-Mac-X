@@ -4,6 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ -n "${UNITY_BIN:-}" ]; then
   :
+elif [ -x "/Volumes/APFS X9/Unity/Hub/Editor/6000.6.0f1/Unity.app/Contents/MacOS/Unity" ]; then
+  UNITY_BIN="/Volumes/APFS X9/Unity/Hub/Editor/6000.6.0f1/Unity.app/Contents/MacOS/Unity"
+elif compgen -G "/Volumes/APFS X9/Unity/Hub/Editor/*/Unity.app/Contents/MacOS/Unity" > /dev/null; then
+  UNITY_BIN="$(ls -d "/Volumes/APFS X9/Unity/Hub/Editor"/*/Unity.app/Contents/MacOS/Unity | head -n 1)"
 elif [ -x "/Applications/Unity/Hub/Editor/6000.6.0f1/Unity.app/Contents/MacOS/Unity" ]; then
   UNITY_BIN="/Applications/Unity/Hub/Editor/6000.6.0f1/Unity.app/Contents/MacOS/Unity"
 elif [ -x "/Applications/Unity/Hub/Editor/6000.4.8f1/Unity.app/Contents/MacOS/Unity" ]; then
@@ -103,11 +107,37 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
   APP_BUNDLE="$OUTPUT"
   [ -d "$APP_BUNDLE" ] || APP_BUNDLE="$ROOT/$OUTPUT"
 
-  # Copy matesfbhelper to Contents/MacOS
+  # Copy matesfbhelper and mateworkshop to Contents/MacOS
   if [ -f "$ROOT/Assets/Plugins/MacOS/matesfbhelper" ]; then
     echo "[build_macos] Installing matesfbhelper to $APP_BUNDLE/Contents/MacOS/matesfbhelper"
     cp -f "$ROOT/Assets/Plugins/MacOS/matesfbhelper" "$APP_BUNDLE/Contents/MacOS/matesfbhelper"
     chmod +x "$APP_BUNDLE/Contents/MacOS/matesfbhelper"
+  fi
+
+  if [ -f "$ROOT/Assets/Plugins/MacOS/mateworkshop" ]; then
+    echo "[build_macos] Installing mateworkshop to $APP_BUNDLE/Contents/MacOS/mateworkshop"
+    cp -f "$ROOT/Assets/Plugins/MacOS/mateworkshop" "$APP_BUNDLE/Contents/MacOS/mateworkshop"
+    chmod +x "$APP_BUNDLE/Contents/MacOS/mateworkshop"
+  fi
+
+  rm -f "$APP_BUNDLE/Contents/MacOS/download_workshop.sh"
+  if [ -f "$ROOT/Tools/download_workshop.sh" ]; then
+    echo "[build_macos] Installing download_workshop.sh to $APP_BUNDLE/Contents/Resources/download_workshop.sh"
+    mkdir -p "$APP_BUNDLE/Contents/Resources"
+    cp -f "$ROOT/Tools/download_workshop.sh" "$APP_BUNDLE/Contents/Resources/download_workshop.sh"
+    chmod +x "$APP_BUNDLE/Contents/Resources/download_workshop.sh"
+  fi
+
+  if [ -f "$ROOT/Assets/MATE ENGINE - System Tray/MacOSTray/workshop_ui.html" ]; then
+    echo "[build_macos] Installing workshop_ui.html to $APP_BUNDLE/Contents/Resources/workshop_ui.html"
+    mkdir -p "$APP_BUNDLE/Contents/Resources"
+    cp -f "$ROOT/Assets/MATE ENGINE - System Tray/MacOSTray/workshop_ui.html" "$APP_BUNDLE/Contents/Resources/workshop_ui.html"
+  fi
+
+  if [ -f "$ROOT/Assets/MATE ENGINE - System Tray/MacOSTray/mate_icon.png" ]; then
+    echo "[build_macos] Installing mate_icon.png to $APP_BUNDLE/Contents/Resources/mate_icon.png"
+    mkdir -p "$APP_BUNDLE/Contents/Resources"
+    cp -f "$ROOT/Assets/MATE ENGINE - System Tray/MacOSTray/mate_icon.png" "$APP_BUNDLE/Contents/Resources/mate_icon.png"
   fi
 
   # Patch bloom alpha multipliers in sharedassets0.assets to prevent dark oval artifact on macOS
@@ -137,7 +167,7 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
 
   echo "[build_macos] Signing $APP_BUNDLE with '$SIGN_IDENTITY' (flags: ${CODESIGN_FLAGS[*]:-none})"
   # Sign all dynamic libraries, frameworks, plugin bundles, and helper executables
-  find "$APP_BUNDLE/Contents/PlugIns" "$APP_BUNDLE/Contents/Frameworks" "$APP_BUNDLE/Contents/MacOS" \( -name '*.bundle' -o -name '*.dylib' -o -name '*.framework' -o -name 'matesfbhelper' \) -print0 2>/dev/null \
+  find "$APP_BUNDLE/Contents/PlugIns" "$APP_BUNDLE/Contents/Frameworks" "$APP_BUNDLE/Contents/MacOS" \( -name '*.bundle' -o -name '*.dylib' -o -name '*.framework' -o -name 'matesfbhelper' -o -name 'mateworkshop' \) -print0 2>/dev/null \
     | xargs -0 -n1 codesign --force "${CODESIGN_FLAGS[@]}" --sign "$SIGN_IDENTITY"
 
   # Sign main executable
@@ -158,6 +188,7 @@ if [ -d "$ROOT/$OUTPUT" ] || [ -d "$OUTPUT" ]; then
     for binary in \
       "$APP_BUNDLE/Contents/MacOS/MateEngineX" \
       "$APP_BUNDLE/Contents/MacOS/matesfbhelper" \
+      "$APP_BUNDLE/Contents/MacOS/mateworkshop" \
       "$APP_BUNDLE"/Contents/PlugIns/*.bundle/Contents/MacOS/* \
       "$APP_BUNDLE"/Contents/Frameworks/*.dylib; do
       [ -e "$binary" ] || continue

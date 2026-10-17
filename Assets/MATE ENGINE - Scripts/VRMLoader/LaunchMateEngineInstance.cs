@@ -70,8 +70,25 @@ public class LaunchMateEngineInstances : MonoBehaviour
             InvokeRepeating(nameof(RefreshStatusPoll), statusPollInterval, statusPollInterval);
 
         if (currentInstanceIndex > 0)
+        {
             WritePidFile();
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            StartCoroutine(EnforceDockHideRoutine());
+#endif
+        }
     }
+
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+    private System.Collections.IEnumerator EnforceDockHideRoutine()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            MacSystemBridge.MacSys_SetDockIconVisible(0);
+            yield return new WaitForSeconds(0.4f);
+        }
+        MacSystemBridge.MacSys_SetDockIconVisible(0);
+    }
+#endif
 
     void OnApplicationQuit()
     {
@@ -290,7 +307,8 @@ public class LaunchMateEngineInstances : MonoBehaviour
             if (p != null && !p.HasExited) return true;
         }
 
-        string pidFile = Path.Combine(persistentPath, $"instance_{index}.pid");
+        string basePath = !string.IsNullOrEmpty(persistentPath) ? persistentPath : Application.persistentDataPath;
+        string pidFile = Path.Combine(basePath, $"instance_{index}.pid");
         if (!File.Exists(pidFile)) return false;
 
         try

@@ -59,6 +59,27 @@ void MacWin_Refresh(int selfPid)
         if (pidRef) CFNumberGetValue(pidRef, kCFNumberIntType, &pid);
         if (pid == selfPid) continue;
 
+        // Ignore any notch, dynamic island, or overlay utility apps
+        CFStringRef ownerRef = (CFStringRef)CFDictionaryGetValue(info, kCGWindowOwnerName);
+        if (ownerRef) {
+            NSString *owner = (__bridge NSString *)ownerRef;
+            if ([owner localizedCaseInsensitiveContainsString:@"notch"] ||
+                [owner localizedCaseInsensitiveContainsString:@"island"] ||
+                [owner localizedCaseInsensitiveContainsString:@"dynamiclake"] ||
+                [owner localizedCaseInsensitiveContainsString:@"mediamate"] ||
+                [owner localizedCaseInsensitiveContainsString:@"topdrop"]) {
+                continue;
+            }
+        }
+        CFStringRef titleRef = (CFStringRef)CFDictionaryGetValue(info, kCGWindowName);
+        if (titleRef) {
+            NSString *title = (__bridge NSString *)titleRef;
+            if ([title localizedCaseInsensitiveContainsString:@"notch"] ||
+                [title localizedCaseInsensitiveContainsString:@"island"]) {
+                continue;
+            }
+        }
+
         // Layer
         CFNumberRef layerRef = (CFNumberRef)CFDictionaryGetValue(info, kCGWindowLayer);
         int layer = 0;

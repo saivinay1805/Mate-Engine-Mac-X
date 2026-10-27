@@ -118,23 +118,26 @@ public static class MonitorHelper
         try
         {
             MacSystemBridge.MacSys_GetScreenVisibleRect(index, out int vx, out int vy, out int vw, out int vh);
-            if (vw <= 0 || vh <= 0) return new Rect(0, 0, 0, 0);
-
             int x = monitor.x, y = monitor.y, w = monitor.width, h = monitor.height;
-            if (vy > y)
-                return new Rect(x, y, w, vy - y);
-            if (vy + vh < y + h)
-                return new Rect(x, vy + vh, w, y + h - (vy + vh));
-            if (vx > x)
-                return new Rect(x, y, vx - x, h);
-            if (vx + vw < x + w)
-                return new Rect(vx + vw, y, x + w - (vx + vw), h);
+            if (vw > 0 && vh > 0)
+            {
+                // On macOS, vy > y corresponds to the top menu bar (not the dock).
+                // Prioritize the bottom dock / bottom edge:
+                if (vy + vh < y + h)
+                    return new Rect(x, vy + vh, w, y + h - (vy + vh));
+                if (vx > x)
+                    return new Rect(x, y, vx - x, h);
+                if (vx + vw < x + w)
+                    return new Rect(vx + vw, y, x + w - (vx + vw), h);
+            }
+            // If dock is hidden or not on this screen, return the bottom 5px floor edge of this monitor
+            return new Rect(x, y + h - 5, w, 5);
         }
         catch (Exception)
         {
         }
 
-        return new Rect(0, 0, 0, 0);
+        return new Rect(monitor.x, monitor.y + monitor.height - 5, monitor.width, 5);
     }
 
     public static List<RectInt> GetMonitorRects()

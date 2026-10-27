@@ -336,13 +336,17 @@ public class VRMLoader : MonoBehaviour
         loadedModel.transform.SetParent(customModelOutput.transform, false);
         loadedModel.transform.localPosition = Vector3.zero;
         loadedModel.transform.localRotation = Quaternion.identity;
-        loadedModel.transform.localScale = Vector3.one;
+        float desiredScale = (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null && SaveLoadHandler.Instance.data.avatarSize > 0.01f)
+            ? SaveLoadHandler.Instance.data.avatarSize
+            : 1.0f;
+        loadedModel.transform.localScale = Vector3.one * desiredScale;
         currentModel = loadedModel;
         SetLayerRecursively(currentModel, 10);
 
         EnableSkinnedMeshRenderers(currentModel);
         AssignAnimatorController(currentModel);
         InjectComponentsFromPrefab(componentTemplatePrefab, currentModel);
+        SaveLoadHandler.ApplyAllSettingsToAllAvatars();
 
         var changer = FindAnyObjectByType<MEValueChanger>();
         if (changer != null)

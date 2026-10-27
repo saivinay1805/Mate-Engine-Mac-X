@@ -125,6 +125,7 @@ public class MenuActions : MonoBehaviour
                     if (RectTransformUtility.ScreenPointToWorldPointInRectangle(radialRect.parent as RectTransform, screenPosition, mainCam, out Vector3 worldPos))
                         radialRect.position = worldPos;
                 }
+                UpdateRadialScale();
             }
             return;
         }
@@ -162,6 +163,7 @@ public class MenuActions : MonoBehaviour
                     radialRect.position = worldPos;
             }
         }
+        UpdateRadialScale();
         if (radialMenu.Open())
             PlayMenuOpenSound();
     }
@@ -345,12 +347,25 @@ public class MenuActions : MonoBehaviour
                                 inst.radialRect.position = worldPos;
                         }
                     }
+                    inst.UpdateRadialScale();
                     if (inst.radialMenu.Open())
                         inst.PlayMenuOpenSound();
                 }
                 return;
             }
         }
+    }
+
+    void UpdateRadialScale()
+    {
+        if (radialMenu == null) return;
+        float avatarScale = 1f;
+        if (currentModel != null)
+            avatarScale = currentModel.transform.lossyScale.y;
+        else if (SaveLoadHandler.Instance != null && SaveLoadHandler.Instance.data != null)
+            avatarScale = SaveLoadHandler.Instance.data.avatarSize;
+
+        radialMenu.Size = Mathf.Clamp(avatarScale, 0.45f, 1.25f);
     }
 
     void PlayMenuOpenSound() => FindAnyObjectByType<MenuAudioHandler>()?.PlayOpenSound();

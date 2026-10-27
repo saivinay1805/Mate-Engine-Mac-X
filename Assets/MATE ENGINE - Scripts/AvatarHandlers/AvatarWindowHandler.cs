@@ -571,12 +571,33 @@ public class AvatarWindowHandler : MonoBehaviour
             if (MacWindowListBinding.MacWin_GetWindow(i,
                 out int wx, out int wy, out int ww, out int wh,
                 out int pid, out int layer, out int isOnscreen, out int windowNumber) == 0) continue;
-            if (isOnscreen == 0 || layer < 0) continue;
+            if (isOnscreen == 0 || layer != 0) continue;
             if (ww < 200 || wh < 60) continue;
             // wx,wy is the top-left corner; wy+wh is the bottom edge (Y-down).
             // CGWindowList is ordered front-to-back: index 0 is the frontmost window.
             var r = new RECT { Left = wx, Top = wy, Right = wx + ww, Bottom = wy + wh };
             cachedWindows.Add(new WindowEntry { hwnd = new IntPtr(windowNumber), rect = r, isTaskbar = false, layer = layer });
+        }
+
+        var monitors = MacWindowHelper.GetMonitors();
+        for (int m = 0; m < monitors.Count; m++)
+        {
+            RectInt mon = monitors[m];
+            int floorHeight = 40;
+            var floorRect = new RECT
+            {
+                Left = mon.x,
+                Top = mon.y + mon.height - floorHeight,
+                Right = mon.x + mon.width,
+                Bottom = mon.y + mon.height
+            };
+            cachedWindows.Add(new WindowEntry
+            {
+                hwnd = new IntPtr(-2000 - m),
+                rect = floorRect,
+                isTaskbar = true,
+                layer = 0
+            });
         }
 #endif
     }
@@ -657,9 +678,9 @@ public class AvatarWindowHandler : MonoBehaviour
             bool nearTop    = checkTop    && Mathf.Abs(py - top)    <= sprF;
             bool nearBottom = checkBottom && Mathf.Abs(py - bottom) <= sprF;
             if (!nearTop && !nearBottom) continue;
-            int snapEdge = (nearTop && nearBottom)
+            int snapEdge = win.isTaskbar ? bottom : ((nearTop && nearBottom)
                 ? (Mathf.Abs(py - top) <= Mathf.Abs(py - bottom) ? top : bottom)
-                : (nearTop ? top : bottom);
+                : (nearTop ? top : bottom));
             if (IsSameProcessWindow(win.hwnd)) continue;
             if (IsOccludedByHigherWindowsAtPoint(win.hwnd, Mathf.RoundToInt(px), Mathf.RoundToInt(py))) continue;
             classNameBuffer.Clear(); GetClassName(win.hwnd, classNameBuffer, classNameBuffer.Capacity);
@@ -1053,7 +1074,7 @@ public class AvatarWindowHandler : MonoBehaviour
     void UpdateOccluderQuadsFrameSync()
     {
 #if UNITY_STANDALONE_WIN
-        if (_occluderSharedMat == null || targetCamera == null || snappedHWND == IntPtr.Zero) { SetTargetQuadActive(false); SetOtherQuadsActive(0); return; }
+        if (_occluderSharedMat == null || targetCamera == null || snappedHWND == IntPtr.Zero || (long)snappedHWND < 0) { SetTargetQuadActive(false); SetOtherQuadsActive(0); return; }
         if (!_haveUnityCli && !GetUnityClientRect(out _lastUnityCli)) { SetTargetQuadActive(false); SetOtherQuadsActive(0); return; }
         RECT uCli = _lastUnityCli;
         Rect unityClient = new Rect(uCli.Left, uCli.Top, uCli.Right - uCli.Left, uCli.Bottom - uCli.Top);
@@ -1097,7 +1118,7 @@ public class AvatarWindowHandler : MonoBehaviour
 #elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
         // Same window-occlusion quads as Windows, fed from the cached CGWindowList
         // rects (the Win32 GetWindowRect calls above have no macOS equivalent).
-        if (_occluderSharedMat == null || targetCamera == null || snappedHWND == IntPtr.Zero) { SetTargetQuadActive(false); SetOtherQuadsActive(0); return; }
+        if (_occluderSharedMat == null || targetCamera == null || snappedHWND == IntPtr.Zero || (long)snappedHWND < 0) { SetTargetQuadActive(false); SetOtherQuadsActive(0); return; }
         if (!_haveUnityCli && !GetUnityClientRect(out _lastUnityCli)) { SetTargetQuadActive(false); SetOtherQuadsActive(0); return; }
         RECT uCli2 = _lastUnityCli;
         Rect unityClient2 = new Rect(uCli2.Left, uCli2.Top, uCli2.Right - uCli2.Left, uCli2.Bottom - uCli2.Top);

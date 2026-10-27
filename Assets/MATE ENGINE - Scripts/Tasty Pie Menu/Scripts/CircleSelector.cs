@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
 using UnityEngine.Assertions;
@@ -185,7 +185,7 @@ namespace Xamin
 
                     float mouseDistanceFromCenter = Vector2.Distance(Camera.main.WorldToScreenPoint(transform.position), Input.mousePosition);
 
-                    if ((selectOnlyOnHover && controlType == ControlType.mouseAndTouch && mouseDistanceFromCenter > pieThickness) ||
+                    if ((selectOnlyOnHover && controlType == ControlType.mouseAndTouch && mouseDistanceFromCenter > (pieThickness * Size)) ||
                         (selectOnlyOnHover && controlType == ControlType.gamepad &&
                          (Mathf.Abs(Input.GetAxisRaw(gamepadAxisX) + Mathf.Abs(Input.GetAxisRaw(gamepadAxisY)))) != 0) ||
                         !selectOnlyOnHover)

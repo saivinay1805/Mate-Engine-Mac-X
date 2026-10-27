@@ -424,9 +424,7 @@ public class AvatarWindowHandler : MonoBehaviour
 #endif
                 if (gotRect)
                 {
-                    int trTop    = tr.Top;
-                    int trBottom = tr.Bottom;
-                    int snapEdgeY = (windowSitEdge == "down") ? trBottom : trTop;
+                    int snapEdgeY = GetTargetSnapEdgeY(tr);
                     CalibrateSeatAnchorToDesktopY(snapEdgeY + seatOffsetPx);
                     if (ComputeSeatDesktop(out float px2, out _))
                     {
@@ -829,13 +827,23 @@ public class AvatarWindowHandler : MonoBehaviour
 #endif
     }
 
+    private int GetTargetSnapEdgeY(RECT tr)
+    {
+        bool snappedToBottom;
+        if (windowSitEdge == "down")
+            snappedToBottom = true;
+        else if (windowSitEdge == "up")
+            snappedToBottom = false;
+        else
+            snappedToBottom = Mathf.Abs(_snappedEdgeY - tr.Bottom) < Mathf.Abs(_snappedEdgeY - tr.Top);
+        return snappedToBottom ? tr.Bottom : tr.Top;
+    }
+
     void RecalibrateIfScaleChanged(RECT tr)
     {
         if ((transform.lossyScale - _prevLossyScale).sqrMagnitude < 1e-6f) return;
         _prevLossyScale = transform.lossyScale;
-        int trTop    = tr.Top;
-        int trBottom = tr.Bottom;
-        int snapEdgeY = (windowSitEdge == "down") ? trBottom : trTop;
+        int snapEdgeY = GetTargetSnapEdgeY(tr);
         CalibrateSeatAnchorToDesktopY(snapEdgeY + seatOffsetPx);
         _snapSmoothingActive = false;
         _snapVelX = _snapVelY = 0f;
@@ -844,18 +852,7 @@ public class AvatarWindowHandler : MonoBehaviour
     {
         if (!ComputeSeatDesktop(out float px, out float py)) return;
         int left = r.Left, right = r.Right;
-        int rTop    = r.Top;
-        int rBottom = r.Bottom;
-        // Determine which edge to follow: windowSitEdge="down" always uses bottom,
-        // "up" always uses top, "auto" uses whichever was snapped to
-        bool snappedToBottom;
-        if (windowSitEdge == "down")
-            snappedToBottom = true;
-        else if (windowSitEdge == "up")
-            snappedToBottom = false;
-        else
-            snappedToBottom = Mathf.Abs(_snappedEdgeY - rBottom) < Mathf.Abs(_snappedEdgeY - rTop);
-        int top = snappedToBottom ? rBottom : rTop;
+        int top = GetTargetSnapEdgeY(r);
         float desiredPX = left + snapFraction * Mathf.Max(1, right - left);
         float desiredPY = top + seatOffsetPx;
         int dx = Mathf.RoundToInt(desiredPX - px);

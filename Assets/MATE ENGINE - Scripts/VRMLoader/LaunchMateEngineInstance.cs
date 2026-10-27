@@ -48,7 +48,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
         {
             if (Time.time - startTime < 12f)
             {
-                if (IsInstanceAlive(index))
+                if (IsChildInstanceAlive(index))
                 {
                     startingInstances.Remove(index);
                     return false;
@@ -365,6 +365,14 @@ public class LaunchMateEngineInstances : MonoBehaviour
                 string txt = File.ReadAllText(pidFile).Trim();
                 if (int.TryParse(txt, out int pid))
                 {
+                    int currentPid = Process.GetCurrentProcess().Id;
+                    if (pid == currentPid)
+                    {
+                        try { File.Delete(pidFile); } catch { }
+                        UpdateButtonText(index, false);
+                        return;
+                    }
+
                     try
                     {
                         var proc = Process.GetProcessById(pid);
@@ -400,6 +408,11 @@ public class LaunchMateEngineInstances : MonoBehaviour
 
     public bool IsInstanceAlive(int index)
     {
+        return IsChildInstanceAlive(index);
+    }
+
+    private bool IsChildInstanceAlive(int index)
+    {
         if (activeInstances.TryGetValue(index, out var p))
         {
             if (p != null && !p.HasExited) return true;
@@ -409,11 +422,18 @@ public class LaunchMateEngineInstances : MonoBehaviour
         string pidFile = Path.Combine(basePath, $"instance_{index}.pid");
         if (!File.Exists(pidFile)) return false;
 
+        int currentPid = Process.GetCurrentProcess().Id;
+
         try
         {
             string txt = File.ReadAllText(pidFile).Trim();
             if (int.TryParse(txt, out int pid))
             {
+                if (pid == currentPid)
+                {
+                    return false;
+                }
+
                 try
                 {
                     var proc = Process.GetProcessById(pid);
@@ -424,8 +444,10 @@ public class LaunchMateEngineInstances : MonoBehaviour
         }
         catch { }
 
-        // Only delete stale PID file if instance is not currently starting
-        if (!IsStarting(index))
+        // Clean up stale PID file only if slot is not currently starting.
+        // Direct dictionary lookup avoids mutual recursion with IsStarting!
+        bool isStarting = startingInstances.TryGetValue(index, out float startTime) && (Time.time - startTime < 12f);
+        if (!isStarting)
         {
             try { File.Delete(pidFile); } catch { }
         }

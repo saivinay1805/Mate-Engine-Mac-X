@@ -519,67 +519,112 @@ public class AvatarLibraryMenu : MonoBehaviour
     }
     private static readonly object fileLock = new object();
 
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX || UNITY_STANDALONE_LINUX
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int flock(int fd, int operation);
+    private const int LOCK_EX = 2;
+    private const int LOCK_UN = 8;
+#endif
+
     private void SaveAvatars(AvatarEntry editedEntry = null)
     {
         lock (fileLock)
         {
             string avatarsJsonPath = Path.Combine(Application.persistentDataPath, "avatars.json");
-            List<AvatarEntry> diskEntries = null;
-            if (File.Exists(avatarsJsonPath))
+            string lockPath = Path.Combine(Application.persistentDataPath, "avatars.json.lock");
+
+            FileStream lockStream = null;
+            try
             {
+                lockStream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX || UNITY_STANDALONE_LINUX
                 try
                 {
-                    string currentJson = File.ReadAllText(avatarsJsonPath);
-                    diskEntries = JsonConvert.DeserializeObject<List<AvatarEntry>>(currentJson);
+                    flock(lockStream.SafeFileHandle.DangerousGetHandle().ToInt32(), LOCK_EX);
                 }
                 catch { }
-            }
+#endif
 
-            if (diskEntries == null)
-            {
-                diskEntries = avatarEntries != null ? new List<AvatarEntry>(avatarEntries) : new List<AvatarEntry>();
-            }
-            else if (editedEntry != null)
-            {
-                var target = diskEntries.FirstOrDefault(e =>
-                    (!string.IsNullOrEmpty(editedEntry.filePath) && string.Equals(e.filePath, editedEntry.filePath, StringComparison.OrdinalIgnoreCase)) ||
-                    (editedEntry.steamFileId > 0 && e.steamFileId == editedEntry.steamFileId)
-                );
+                List<AvatarEntry> diskEntries = null;
+                if (File.Exists(avatarsJsonPath))
+                {
+                    try
+                    {
+                        string currentJson = File.ReadAllText(avatarsJsonPath);
+                        diskEntries = JsonConvert.DeserializeObject<List<AvatarEntry>>(currentJson);
+                    }
+                    catch { }
+                }
 
-                if (target != null)
+                if (diskEntries == null)
                 {
-                    target.isNSFW = editedEntry.isNSFW;
-                    target.displayName = editedEntry.displayName;
-                    target.author = editedEntry.author;
-                    target.version = editedEntry.version;
-                    target.isOwner = editedEntry.isOwner;
-                    if (!string.IsNullOrEmpty(editedEntry.thumbnailPath))
-                        target.thumbnailPath = editedEntry.thumbnailPath;
+                    diskEntries = avatarEntries != null ? new List<AvatarEntry>(avatarEntries) : new List<AvatarEntry>();
                 }
-                else
-                {
-                    diskEntries.Add(editedEntry);
-                }
-            }
-            else if (avatarEntries != null)
-            {
-                foreach (var inMem in avatarEntries)
+                else if (editedEntry != null)
                 {
                     var target = diskEntries.FirstOrDefault(e =>
-                        (!string.IsNullOrEmpty(inMem.filePath) && string.Equals(e.filePath, inMem.filePath, StringComparison.OrdinalIgnoreCase)) ||
-                        (inMem.steamFileId > 0 && e.steamFileId == inMem.steamFileId)
+                        (!string.IsNullOrEmpty(editedEntry.filePath) && string.Equals(e.filePath, editedEntry.filePath, StringComparison.OrdinalIgnoreCase)) ||
+                        (editedEntry.steamFileId > 0 && e.steamFileId == editedEntry.steamFileId)
                     );
+
                     if (target != null)
                     {
-                        target.isNSFW = inMem.isNSFW;
-                        target.isOwner = inMem.isOwner;
+                        target.isNSFW = editedEntry.isNSFW;
+                        target.displayName = editedEntry.displayName;
+                        target.author = editedEntry.author;
+                        target.version = editedEntry.version;
+                        target.isOwner = editedEntry.isOwner;
+                        if (!string.IsNullOrEmpty(editedEntry.thumbnailPath))
+                            target.thumbnailPath = editedEntry.thumbnailPath;
+                    }
+                    else if (File.Exists(editedEntry.filePath))
+                    {
+                        diskEntries.Add(editedEntry);
                     }
                 }
-            }
+                else if (avatarEntries != null)
+                {
+                    foreach (var inMem in avatarEntries)
+                    {
+                        var target = diskEntries.FirstOrDefault(e =>
+                            (!string.IsNullOrEmpty(inMem.filePath) && string.Equals(e.filePath, inMem.filePath, StringComparison.OrdinalIgnoreCase)) ||
+                            (inMem.steamFileId > 0 && e.steamFileId == inMem.steamFileId)
+                        );
+                        if (target != null)
+                        {
+                            target.isNSFW = inMem.isNSFW;
+                            target.isOwner = inMem.isOwner;
+                        }
+                    }
+                }
 
-            string newJson = JsonConvert.SerializeObject(diskEntries, Formatting.Indented);
-            File.WriteAllText(avatarsJsonPath, newJson);
-            avatarEntries = diskEntries;
+                string newJson = JsonConvert.SerializeObject(diskEntries, Formatting.Indented);
+                string tmpPath = avatarsJsonPath + $".tmp.{System.Diagnostics.Process.GetCurrentProcess().Id}";
+                File.WriteAllText(tmpPath, newJson);
+                if (File.Exists(avatarsJsonPath))
+                {
+                    File.Delete(avatarsJsonPath);
+                }
+                File.Move(tmpPath, avatarsJsonPath);
+                avatarEntries = diskEntries;
+            }
+            finally
+            {
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX || UNITY_STANDALONE_LINUX
+                if (lockStream != null)
+                {
+                    try
+                    {
+                        flock(lockStream.SafeFileHandle.DangerousGetHandle().ToInt32(), LOCK_UN);
+                    }
+                    catch { }
+                }
+#endif
+                if (lockStream != null)
+                {
+                    lockStream.Dispose();
+                }
+            }
         }
     }
 

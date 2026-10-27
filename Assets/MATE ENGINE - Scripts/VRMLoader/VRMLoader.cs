@@ -641,6 +641,7 @@ public class VRMLoader : MonoBehaviour
 
     public void ActivateDefaultModel()
     {
+        ++currentLoadGeneration;
         ClearPreviousCustomModel(skipRawImageCleanup: true);
         EnableMainModel();
 

@@ -164,7 +164,9 @@ if vrm_file or (me_file and not me_is_dance):
 if unity3d_file or (me_file and me_is_dance):
     mod_file = unity3d_file if unity3d_file else me_file
     src_dance = os.path.join(steam_dir, mod_file)
-    dst_dance = os.path.join(target_base, 'Mods', mod_file)
+    item_mods_dir = os.path.join(target_base, 'Mods', item_id)
+    os.makedirs(item_mods_dir, exist_ok=True)
+    dst_dance = os.path.join(item_mods_dir, mod_file)
     shutil.copy2(src_dance, dst_dance)
 
     map_lock = os.path.join(target_base, 'mods_workshop_map.json.lock')
@@ -179,10 +181,11 @@ if unity3d_file or (me_file and me_is_dance):
                         mod_map = json.load(mf)
                 except:
                     mod_map = {}
+            mapKey = f"{item_id}/{mod_file}"
             try:
-                mod_map[mod_file] = int(item_id)
+                mod_map[mapKey] = int(item_id)
             except:
-                mod_map[mod_file] = item_id
+                mod_map[mapKey] = item_id
             tmp_map = map_path + f'.tmp.{os.getpid()}'
             with open(tmp_map, 'w', encoding='utf-8') as mf:
                 json.dump(mod_map, mf, indent=2)

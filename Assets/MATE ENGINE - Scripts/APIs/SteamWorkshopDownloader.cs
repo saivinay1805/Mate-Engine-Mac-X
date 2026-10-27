@@ -379,7 +379,9 @@ namespace MateEngine.Workshop
             if (!string.IsNullOrEmpty(unity3dFile) || (!string.IsNullOrEmpty(meFile) && IsDanceME(meFile)))
             {
                 string srcMod = !string.IsNullOrEmpty(unity3dFile) ? unity3dFile : meFile;
-                string destMod = Path.Combine(modsDir, Path.GetFileName(srcMod));
+                string itemModsDir = Path.Combine(modsDir, item.id);
+                Directory.CreateDirectory(itemModsDir);
+                string destMod = Path.Combine(itemModsDir, Path.GetFileName(srcMod));
                 File.Copy(srcMod, destMod, true);
 
                 ulong wid = 0;
@@ -393,7 +395,8 @@ namespace MateEngine.Workshop
                     try { map = JsonConvert.DeserializeObject<Dictionary<string, ulong>>(File.ReadAllText(mapPath)) ?? map; }
                     catch { }
                 }
-                map[Path.GetFileName(destMod)] = wid;
+                string relKey = $"{item.id}/{Path.GetFileName(destMod)}";
+                map[relKey] = wid;
                 File.WriteAllText(mapPath, JsonConvert.SerializeObject(map, Formatting.Indented));
 
                 UnityMainThreadDispatcher.Enqueue(() =>

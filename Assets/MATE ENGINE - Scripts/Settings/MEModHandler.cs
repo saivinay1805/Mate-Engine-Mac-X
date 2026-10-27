@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using SFB;
@@ -91,6 +91,11 @@ public class MEModHandler : MonoBehaviour
     void LoadUnity3D(string path, bool addToUI, bool respectSavedState)
     {
         var name = Path.GetFileNameWithoutExtension(path);
+        string parent = Path.GetFileName(Path.GetDirectoryName(path));
+        if (!string.IsNullOrEmpty(parent) && !parent.Equals("Mods", StringComparison.OrdinalIgnoreCase))
+        {
+            name = $"{name} ({parent})";
+        }
 
         int exist = loadedMods.FindIndex(m => string.Equals(m.name, name, StringComparison.OrdinalIgnoreCase) && m.type == ModType.Unity3D);
         if (exist >= 0) loadedMods.RemoveAt(exist);
@@ -110,9 +115,15 @@ public class MEModHandler : MonoBehaviour
     void LoadME(string path)
     {
         string id = Path.GetFileNameWithoutExtension(path);
+        string parent = Path.GetFileName(Path.GetDirectoryName(path));
+        if (!string.IsNullOrEmpty(parent) && !parent.Equals("Mods", StringComparison.OrdinalIgnoreCase))
+        {
+            id = $"{id} ({parent})";
+        }
         string cacheRoot = Path.Combine(Application.temporaryCachePath, "ME_Cache");
         Directory.CreateDirectory(cacheRoot);
-        string dst = Path.Combine(cacheRoot, id);
+        string folderHash = (path.GetHashCode() & 0x7fffffff).ToString("x8");
+        string dst = Path.Combine(cacheRoot, $"{id}_{folderHash}");
 
         bool needExtract = true;
         try

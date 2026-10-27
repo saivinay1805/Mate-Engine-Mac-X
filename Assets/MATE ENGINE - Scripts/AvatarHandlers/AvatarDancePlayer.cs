@@ -621,9 +621,28 @@ namespace CustomDancePlayer
             Debug.Log($"[AvatarDancePlayer] Added {addedCount} built-in animations. Total entries: {entries.Count}");
         }
 
+        string GenerateUniqueDanceId(string path)
+        {
+            string baseId = Path.GetFileNameWithoutExtension(path);
+            string parent = Path.GetFileName(Path.GetDirectoryName(path));
+            string candidate = baseId;
+            if (!string.IsNullOrEmpty(parent) && !parent.Equals(modsFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = $"{baseId} ({parent})";
+            }
+
+            if (byId.ContainsKey(candidate))
+            {
+                int suffix = 2;
+                while (byId.ContainsKey($"{candidate} #{suffix}")) suffix++;
+                candidate = $"{candidate} #{suffix}";
+            }
+            return candidate;
+        }
+
         void TryAddUnity3D(string path)
         {
-            string id = Path.GetFileNameWithoutExtension(path);
+            string id = GenerateUniqueDanceId(path);
             if (!IsModEnabled(id)) return;
             if (byId.ContainsKey(id)) return;
 
@@ -645,13 +664,14 @@ namespace CustomDancePlayer
 
         void TryAddME(string mePath)
         {
-            string id = Path.GetFileNameWithoutExtension(mePath);
+            string id = GenerateUniqueDanceId(mePath);
             if (!IsModEnabled(id)) return;
             if (byId.ContainsKey(id)) return;
 
             string cacheRoot = Path.Combine(Application.temporaryCachePath, "ME_Cache");
             Directory.CreateDirectory(cacheRoot);
-            string dst = Path.Combine(cacheRoot, id);
+            string folderHash = (mePath.GetHashCode() & 0x7fffffff).ToString("x8");
+            string dst = Path.Combine(cacheRoot, $"{id}_{folderHash}");
 
             bool needExtract = true;
             try

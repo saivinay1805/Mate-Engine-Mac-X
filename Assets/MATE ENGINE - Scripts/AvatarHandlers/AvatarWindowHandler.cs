@@ -671,8 +671,8 @@ public class AvatarWindowHandler : MonoBehaviour
             int top    = win.rect.Top;
             int bottom = win.rect.Bottom;
             if (!(px >= left && px <= right)) continue;
-            bool checkTop    = windowSitEdge != "down";
-            bool checkBottom = windowSitEdge != "up";
+            bool checkTop    = windowSitEdge != "down" && !win.isTaskbar;
+            bool checkBottom = windowSitEdge != "up" || win.isTaskbar;
             bool nearTop    = checkTop    && Mathf.Abs(py - top)    <= sprF;
             bool nearBottom = checkBottom && Mathf.Abs(py - bottom) <= sprF;
             if (!nearTop && !nearBottom) continue;
@@ -829,6 +829,11 @@ public class AvatarWindowHandler : MonoBehaviour
 
     private int GetTargetSnapEdgeY(RECT tr)
     {
+        if (animator != null && animator.GetBool("isTaskbarSit"))
+        {
+            return tr.Bottom;
+        }
+
         bool snappedToBottom;
         if (windowSitEdge == "down")
             snappedToBottom = true;

@@ -299,7 +299,7 @@ public class AvatarLibraryMenu : MonoBehaviour
                 if (match != null)
                 {
                     match.isNSFW = val;
-                    SaveAvatars();
+                    SaveAvatars(match);
                 }
             });
 
@@ -342,7 +342,7 @@ public class AvatarLibraryMenu : MonoBehaviour
                 if (match != null)
                 {
                     match.isNSFW = entry.isNSFW;
-                    SaveAvatars();
+                    SaveAvatars(match);
                     SteamWorkshopHandler.Instance.UploadToWorkshop(match, uploadSlider);
                 }
             });
@@ -517,11 +517,70 @@ public class AvatarLibraryMenu : MonoBehaviour
 
         ReloadAvatars();
     }
-    private void SaveAvatars()
+    private static readonly object fileLock = new object();
+
+    private void SaveAvatars(AvatarEntry editedEntry = null)
     {
-        string avatarsJsonPath = Path.Combine(Application.persistentDataPath, "avatars.json");
-        string newJson = JsonConvert.SerializeObject(avatarEntries, Formatting.Indented);
-        File.WriteAllText(avatarsJsonPath, newJson);
+        lock (fileLock)
+        {
+            string avatarsJsonPath = Path.Combine(Application.persistentDataPath, "avatars.json");
+            List<AvatarEntry> diskEntries = null;
+            if (File.Exists(avatarsJsonPath))
+            {
+                try
+                {
+                    string currentJson = File.ReadAllText(avatarsJsonPath);
+                    diskEntries = JsonConvert.DeserializeObject<List<AvatarEntry>>(currentJson);
+                }
+                catch { }
+            }
+
+            if (diskEntries == null)
+            {
+                diskEntries = avatarEntries != null ? new List<AvatarEntry>(avatarEntries) : new List<AvatarEntry>();
+            }
+            else if (editedEntry != null)
+            {
+                var target = diskEntries.FirstOrDefault(e =>
+                    (!string.IsNullOrEmpty(editedEntry.filePath) && string.Equals(e.filePath, editedEntry.filePath, StringComparison.OrdinalIgnoreCase)) ||
+                    (editedEntry.steamFileId > 0 && e.steamFileId == editedEntry.steamFileId)
+                );
+
+                if (target != null)
+                {
+                    target.isNSFW = editedEntry.isNSFW;
+                    target.displayName = editedEntry.displayName;
+                    target.author = editedEntry.author;
+                    target.version = editedEntry.version;
+                    target.isOwner = editedEntry.isOwner;
+                    if (!string.IsNullOrEmpty(editedEntry.thumbnailPath))
+                        target.thumbnailPath = editedEntry.thumbnailPath;
+                }
+                else
+                {
+                    diskEntries.Add(editedEntry);
+                }
+            }
+            else if (avatarEntries != null)
+            {
+                foreach (var inMem in avatarEntries)
+                {
+                    var target = diskEntries.FirstOrDefault(e =>
+                        (!string.IsNullOrEmpty(inMem.filePath) && string.Equals(e.filePath, inMem.filePath, StringComparison.OrdinalIgnoreCase)) ||
+                        (inMem.steamFileId > 0 && e.steamFileId == inMem.steamFileId)
+                    );
+                    if (target != null)
+                    {
+                        target.isNSFW = inMem.isNSFW;
+                        target.isOwner = inMem.isOwner;
+                    }
+                }
+            }
+
+            string newJson = JsonConvert.SerializeObject(diskEntries, Formatting.Indented);
+            File.WriteAllText(avatarsJsonPath, newJson);
+            avatarEntries = diskEntries;
+        }
     }
 
 }

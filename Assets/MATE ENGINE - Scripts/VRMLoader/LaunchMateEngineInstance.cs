@@ -33,6 +33,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
     public List<GameObject> hideIfSecondaryItems = new List<GameObject>();
 
     private readonly Dictionary<int, Process> activeInstances = new Dictionary<int, Process>();
+    private readonly Dictionary<int, float> startingInstances = new Dictionary<int, float>();
     private string persistentPath;
     private int currentInstanceIndex = 0;
     private string pidPath = null;
@@ -40,6 +41,24 @@ public class LaunchMateEngineInstances : MonoBehaviour
 
     public static LaunchMateEngineInstances Instance { get; private set; }
     public int CurrentInstanceIndex => currentInstanceIndex;
+
+    public bool IsStarting(int index)
+    {
+        if (startingInstances.TryGetValue(index, out float startTime))
+        {
+            if (Time.time - startTime < 12f)
+            {
+                if (IsInstanceAlive(index))
+                {
+                    startingInstances.Remove(index);
+                    return false;
+                }
+                return true;
+            }
+            startingInstances.Remove(index);
+        }
+        return false;
+    }
 
     void Awake()
     {
@@ -51,6 +70,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
         {
 #if UNITY_STANDALONE_OSX && !UNITY_EDITOR
             MacSystemBridge.MacSys_SetDockIconVisible(0);
+            MacAudioMonitorBinding.SetDiscordRPCEnabled(false);
 #endif
             ApplySecondaryHide();
         }
@@ -176,6 +196,12 @@ public class LaunchMateEngineInstances : MonoBehaviour
 
     public void ToggleInstance(int index)
     {
+        if (IsStarting(index))
+        {
+            UnityEngine.Debug.Log($"[Launcher] Instance {index} is currently starting. Please wait...");
+            return;
+        }
+
         if (IsInstanceAlive(index))
             CloseInstance(index);
         else
@@ -184,12 +210,21 @@ public class LaunchMateEngineInstances : MonoBehaviour
 
     public void LaunchInstance(int index)
     {
+        if (IsStarting(index))
+        {
+            UnityEngine.Debug.Log($"[Launcher] Instance {index} is already starting.");
+            return;
+        }
+
         if (IsInstanceAlive(index))
         {
             UnityEngine.Debug.Log($"[Launcher] Instance {index} already running.");
             UpdateButtonText(index, true);
             return;
         }
+
+        startingInstances[index] = Time.time;
+        UpdateButtonStarting(index);
 
         string saveFile = $"settings_instance{index}.json";
         string dataDir = $"Instance_{index}";
@@ -208,12 +243,13 @@ public class LaunchMateEngineInstances : MonoBehaviour
                     UseShellExecute = false
                 };
                 Process.Start(openInfo);
-                UpdateButtonText(index, true);
                 UnityEngine.Debug.Log($"[Launcher] Started Instance {index} via open -n bundle: {bundle}");
                 return;
             }
             catch (Exception exOpen)
             {
+                startingInstances.Remove(index);
+                UpdateButtonText(index, false);
                 UnityEngine.Debug.LogError("[Launcher] open -n bundle fallback failed: " + exOpen.Message);
             }
         }
@@ -222,6 +258,8 @@ public class LaunchMateEngineInstances : MonoBehaviour
         string exePath = GetExecutablePath();
         if (!File.Exists(exePath))
         {
+            startingInstances.Remove(index);
+            UpdateButtonText(index, false);
             UnityEngine.Debug.LogError("[Launcher] Executable not found: " + exePath);
             return;
         }
@@ -248,17 +286,19 @@ public class LaunchMateEngineInstances : MonoBehaviour
                 };
             }
 
-            UpdateButtonText(index, true);
             UnityEngine.Debug.Log($"[Launcher] Started Instance {index} with args: {args}");
         }
         catch (Exception ex)
         {
+            startingInstances.Remove(index);
+            UpdateButtonText(index, false);
             UnityEngine.Debug.LogError("[Launcher] Failed to start instance " + index + ": " + ex.Message);
         }
     }
 
     public void CloseInstance(int index)
     {
+        startingInstances.Remove(index);
         if (activeInstances.TryGetValue(index, out var p))
         {
             try
@@ -297,7 +337,12 @@ public class LaunchMateEngineInstances : MonoBehaviour
     void RefreshStatusPoll()
     {
         for (int i = 1; i <= instances.Count; i++)
-            UpdateButtonText(i, IsInstanceAlive(i));
+        {
+            if (IsStarting(i))
+                UpdateButtonStarting(i);
+            else
+                UpdateButtonText(i, IsInstanceAlive(i));
+        }
     }
 
     public bool IsInstanceAlive(int index)
@@ -326,8 +371,22 @@ public class LaunchMateEngineInstances : MonoBehaviour
         }
         catch { }
 
-        try { File.Delete(pidFile); } catch { }
+        // Only delete stale PID file if instance is not currently starting
+        if (!IsStarting(index))
+        {
+            try { File.Delete(pidFile); } catch { }
+        }
         return false;
+    }
+
+    void UpdateButtonStarting(int index)
+    {
+        int idx = index - 1;
+        if (idx < 0 || idx >= instances.Count) return;
+        var entry = instances[idx];
+        if (entry == null || entry.text == null) return;
+
+        entry.text.text = $"Starting #{index}...";
     }
 
     public GameObject GetInstancesPanel()

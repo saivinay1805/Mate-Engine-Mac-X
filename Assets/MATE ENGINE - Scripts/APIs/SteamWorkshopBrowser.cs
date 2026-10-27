@@ -80,14 +80,18 @@ namespace MateEngine.Workshop
 
             try
             {
+                string dataPath = Application.persistentDataPath;
+                string args = $"--datapath \"{dataPath}\"";
+                if (!string.IsNullOrEmpty(arg)) args += $" \"{arg}\"";
+
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = helperPath,
-                    Arguments = !string.IsNullOrEmpty(arg) ? $"\"{arg}\"" : "",
+                    Arguments = args,
                     UseShellExecute = false
                 };
                 Process.Start(psi);
-                UnityEngine.Debug.Log($"[SteamWorkshopBrowser] Launched native macOS workshop browser: {helperPath}");
+                UnityEngine.Debug.Log($"[SteamWorkshopBrowser] Launched native macOS workshop browser: {helperPath} {args}");
             }
             catch (Exception ex)
             {

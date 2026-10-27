@@ -91,19 +91,38 @@ static void DrainDiscordReplies(int sock)
     }
 }
 
+static int gDiscordRPCManualOverride = -1;
+
+void MacAudio_SetDiscordRPCEnabled(int enabled)
+{
+    gDiscordRPCManualOverride = enabled ? 1 : 0;
+}
+
 static BOOL IsDiscordRPCEnabledInSettings(void)
 {
+    if (gDiscordRPCManualOverride >= 0) {
+        return gDiscordRPCManualOverride == 1;
+    }
+
     NSString *home = NSHomeDirectory();
-    NSString *settingsPath = [home stringByAppendingPathComponent:@"Library/Application Support/com.Shinymoon.MateEngineX/settings.json"];
-    NSData *data = [NSData dataWithContentsOfFile:settingsPath];
-    if (!data) return YES;
-    
-    NSError *err = nil;
-    NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data options:0 error:&err];
-    if (dict && [dict isKindOfClass:[NSDictionary class]]) {
-        NSNumber *val = dict[@"enableDiscordRPC"];
-        if (val && [val isKindOfClass:[NSNumber class]]) {
-            return [val boolValue];
+    NSArray *candidates = @[
+        [home stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX/settings.json"],
+        [home stringByAppendingPathComponent:@"Library/Application Support/com.Shinymoon.MateEngineX/settings.json"]
+    ];
+
+    for (NSString *settingsPath in candidates) {
+        if ([[NSFileManager defaultManager] fileExistsAtPath:settingsPath]) {
+            NSData *data = [NSData dataWithContentsOfFile:settingsPath];
+            if (data) {
+                NSError *err = nil;
+                NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data options:0 error:&err];
+                if (dict && [dict isKindOfClass:[NSDictionary class]]) {
+                    NSNumber *val = dict[@"enableDiscordRPC"];
+                    if (val && [val isKindOfClass:[NSNumber class]]) {
+                        return [val boolValue];
+                    }
+                }
+            }
         }
     }
     return YES;

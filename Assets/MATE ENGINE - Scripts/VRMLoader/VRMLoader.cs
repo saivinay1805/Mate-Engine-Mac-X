@@ -56,22 +56,63 @@ public class VRMLoader : MonoBehaviour
             LoadVRM(savedPath);
     }
 
+    private int instanceIndex = -1;
+    private int GetInstanceIndex()
+    {
+        if (instanceIndex >= 0) return instanceIndex;
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i].Equals("--instance", StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(args[i + 1], out int idx))
+                {
+                    instanceIndex = Mathf.Max(0, idx);
+                    return instanceIndex;
+                }
+            }
+        }
+        instanceIndex = 0;
+        return instanceIndex;
+    }
+
     private float nextCmdCheckTime = 0f;
     void Update()
     {
         if (Time.time < nextCmdCheckTime) return;
         nextCmdCheckTime = Time.time + 0.4f;
 
-        string cmdFile = Path.Combine(Application.persistentDataPath, "load_command.txt");
-        if (File.Exists(cmdFile))
+        int instIdx = GetInstanceIndex();
+        string basePath = Application.persistentDataPath;
+
+        // Primary instance checks "load_command.txt" and "load_command_0.txt".
+        // Secondary instances check their dedicated "load_command_{instIdx}.txt".
+        string[] candidateFiles = instIdx == 0
+            ? new[] { Path.Combine(basePath, "load_command.txt"), Path.Combine(basePath, "load_command_0.txt") }
+            : new[] { Path.Combine(basePath, $"load_command_{instIdx}.txt") };
+
+        foreach (var cmdFile in candidateFiles)
         {
+            if (!File.Exists(cmdFile)) continue;
+
+            string claimFile = cmdFile + ".claim." + Guid.NewGuid().ToString("N");
             try
             {
-                string targetPath = File.ReadAllText(cmdFile).Trim();
-                File.Delete(cmdFile);
+                File.Move(cmdFile, claimFile);
+            }
+            catch
+            {
+                // Another instance or thread claimed the file
+                continue;
+            }
+
+            try
+            {
+                string targetPath = File.ReadAllText(claimFile).Trim();
+                File.Delete(claimFile);
                 if (!string.IsNullOrEmpty(targetPath) && File.Exists(targetPath))
                 {
-                    Debug.Log("[VRMLoader] Loading external avatar request: " + targetPath);
+                    Debug.Log($"[VRMLoader] Loading external avatar request for instance {instIdx}: " + targetPath);
                     LoadVRM(targetPath);
                     var lib = FindAnyObjectByType<AvatarLibraryMenu>();
                     if (lib != null) lib.ReloadAvatars();
@@ -79,7 +120,8 @@ public class VRMLoader : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[VRMLoader] Failed to read load_command.txt: " + ex.Message);
+                Debug.LogWarning("[VRMLoader] Failed to read load command: " + ex.Message);
+                try { if (File.Exists(claimFile)) File.Delete(claimFile); } catch { }
             }
         }
     }

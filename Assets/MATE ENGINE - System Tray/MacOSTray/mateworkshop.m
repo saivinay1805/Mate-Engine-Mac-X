@@ -2,15 +2,23 @@
 #import <WebKit/WebKit.h>
 #import <unistd.h>
 
+static NSString *gDataPath = nil;
+
 @interface MateWorkshopApp : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate>
 @property (nonatomic, strong) NSWindow *window;
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) NSString *htmlPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSTask *> *activeDownloads;
 @property (nonatomic, strong) NSURLSessionDataTask *currentFetchTask;
++ (NSString *)baseDataPath;
 @end
 
 @implementation MateWorkshopApp
+
++ (NSString *)baseDataPath {
+    if (gDataPath.length > 0) return gDataPath;
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX"];
+}
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     self.activeDownloads = [NSMutableDictionary dictionary];
@@ -304,7 +312,7 @@
 // Return Installed Items Map
 - (NSDictionary *)getInstalledMap {
     NSMutableDictionary *map = [NSMutableDictionary dictionary];
-    NSString *base = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX"];
+    NSString *base = [MateWorkshopApp baseDataPath];
     NSString *avatarsJson = [base stringByAppendingPathComponent:@"avatars.json"];
     
     if ([[NSFileManager defaultManager] fileExistsAtPath:avatarsJson]) {
@@ -404,7 +412,7 @@
                 [fh closeFile];
                 
                 if (imgData.length > 0) {
-                    NSString *thumbsDir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX/Thumbnails"];
+                    NSString *thumbsDir = [[MateWorkshopApp baseDataPath] stringByAppendingPathComponent:@"Thumbnails"];
                     [[NSFileManager defaultManager] createDirectoryAtPath:thumbsDir withIntermediateDirectories:YES attributes:nil error:nil];
                     NSString *cleanName = [modelName stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
                     NSString *outPath = [thumbsDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_thumb.png", cleanName]];
@@ -424,7 +432,7 @@
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSMutableArray *list = [NSMutableArray array];
-        NSString *base = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX"];
+        NSString *base = [MateWorkshopApp baseDataPath];
         NSString *avatarsJson = [base stringByAppendingPathComponent:@"avatars.json"];
         
         if ([[NSFileManager defaultManager] fileExistsAtPath:avatarsJson]) {
@@ -488,7 +496,7 @@
 - (void)loadModelWithId:(NSString *)itemId path:(NSString *)path {
     NSString *modelPath = path;
     NSString *modelName = @"";
-    NSString *base = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX"];
+    NSString *base = [MateWorkshopApp baseDataPath];
     
     if (modelPath.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:modelPath]) {
         NSString *avatarsJson = [base stringByAppendingPathComponent:@"avatars.json"];
@@ -555,7 +563,7 @@
 
 - (void)spawnNewAvatarWithId:(NSString *)itemId path:(NSString *)path {
     NSString *modelPath = path;
-    NSString *base = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Shinymoon/MateEngineX"];
+    NSString *base = [MateWorkshopApp baseDataPath];
     
     if (modelPath.length == 0 || ![[NSFileManager defaultManager] fileExistsAtPath:modelPath]) {
         NSString *avatarsJson = [base stringByAppendingPathComponent:@"avatars.json"];
@@ -585,7 +593,7 @@
     }
     
     // Find next available instance index 1..5
-    int nextIdx = 1;
+    int nextIdx = -1;
     for (int i = 1; i <= 5; i++) {
         NSString *pidFile = [base stringByAppendingPathComponent:[NSString stringWithFormat:@"instance_%d.pid", i]];
         if ([[NSFileManager defaultManager] fileExistsAtPath:pidFile]) {
@@ -598,6 +606,18 @@
         nextIdx = i;
         break;
     }
+
+    if (nextIdx < 1 || nextIdx > 5) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *js = [NSString stringWithFormat:@"window.onAvatarSpawned('%@', false, 'Maximum of 5 avatars reached. Please close an avatar first.');", itemId];
+            [self.webView evaluateJavaScript:js completionHandler:nil];
+        });
+        return;
+    }
+
+    // Reserve slot temporarily with current PID so rapid clicks do not pick the same slot while child is launching
+    NSString *reservePidFile = [base stringByAppendingPathComponent:[NSString stringWithFormat:@"instance_%d.pid", nextIdx]];
+    [[NSString stringWithFormat:@"%d", (int)getpid()] writeToFile:reservePidFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
     
     NSString *instanceDir = [base stringByAppendingPathComponent:[NSString stringWithFormat:@"Instance_%d", nextIdx]];
     [[NSFileManager defaultManager] createDirectoryAtPath:instanceDir withIntermediateDirectories:YES attributes:nil error:nil];
@@ -635,6 +655,9 @@
     
     NSError *err = nil;
     [openTask launchAndReturnError:&err];
+    if (err) {
+        [[NSFileManager defaultManager] removeItemAtPath:reservePidFile error:nil];
+    }
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!err) {
@@ -689,10 +712,11 @@
     
     NSTask *task = [[NSTask alloc] init];
     task.launchPath = @"/bin/bash";
-    task.arguments = @[scriptPath, itemId];
+    task.arguments = @[scriptPath, itemId, [MateWorkshopApp baseDataPath]];
     
     NSMutableDictionary *env = [[[NSProcessInfo processInfo] environment] mutableCopy];
     env[@"PATH"] = @"/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+    env[@"MATE_PERSISTENT_DATA_PATH"] = [MateWorkshopApp baseDataPath];
     task.environment = env;
     
     NSPipe *pipe = [NSPipe pipe];
@@ -784,6 +808,13 @@
 
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
+        for (int i = 1; i < argc; i++) {
+            NSString *arg = [NSString stringWithUTF8String:argv[i]];
+            if ([arg isEqualToString:@"--datapath"] && i + 1 < argc) {
+                gDataPath = [NSString stringWithUTF8String:argv[i + 1]];
+                i++;
+            }
+        }
         NSApplication *app = [NSApplication sharedApplication];
         MateWorkshopApp *delegate = [[MateWorkshopApp alloc] init];
         app.delegate = delegate;

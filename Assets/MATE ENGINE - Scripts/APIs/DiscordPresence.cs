@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using DiscordRPC;
 using System;
 using System.Collections.Generic;
@@ -58,6 +58,9 @@ public class DiscordPresence : MonoBehaviour
     void Start()
     {
         wasRPCEnabled = SaveLoadHandler.Instance?.data.enableDiscordRPC == true;
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        MacAudioMonitorBinding.SetDiscordRPCEnabled(wasRPCEnabled);
+#endif
         if (wasRPCEnabled)
         {
             try
@@ -87,6 +90,9 @@ public class DiscordPresence : MonoBehaviour
         if (isEnabled != wasRPCEnabled)
         {
             wasRPCEnabled = isEnabled;
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+            MacAudioMonitorBinding.SetDiscordRPCEnabled(isEnabled);
+#endif
 
             if (isEnabled)
             {
@@ -261,6 +267,9 @@ public class DiscordPresence : MonoBehaviour
 
     void OnApplicationQuit()
     {
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        MacAudioMonitorBinding.SetDiscordRPCEnabled(false);
+#endif
         try
         {
             if (client != null)

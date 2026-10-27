@@ -10,6 +10,13 @@ public static class MacAudioMonitorBinding
     [DllImport("MacAudioMonitor")] private static extern int MacAudio_SystemCaptureAvailable();
     [DllImport("MacAudioMonitor")] private static extern int MacAudio_HasCapturePermission();
     [DllImport("MacAudioMonitor")] private static extern int MacAudio_GetDefaultDeviceName(byte[] buf, int bufLen);
+    [DllImport("MacAudioMonitor")] private static extern void MacAudio_SetDiscordRPCEnabled(int enabled);
+
+    public static void SetDiscordRPCEnabled(bool enabled)
+    {
+        try { MacAudio_SetDiscordRPCEnabled(enabled ? 1 : 0); }
+        catch (System.Exception e) { Debug.LogError("[MacAudioMonitor] SetDiscordRPCEnabled exception: " + e.Message); }
+    }
 
     public static void Start()
     {

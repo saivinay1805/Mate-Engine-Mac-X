@@ -210,12 +210,20 @@ public class UniversalBlendshapes : MonoBehaviour
         return states != null && states.TryGetValue(key, out var s) && s != null ? s.value : 0f;
     }
 
+    private float autoBlinkWeight = 0f;
+
     private void UpdateAutoBlink()
     {
-        if (!enableAutoBlink) return;
+        if (!enableAutoBlink)
+        {
+            autoBlinkWeight = 0f;
+            return;
+        }
+
         float now = Time.time;
         if (blinkStartTime < 0f)
         {
+            autoBlinkWeight = 0f;
             if (now >= nextBlinkTime)
             {
                 blinkStartTime = now;
@@ -228,24 +236,20 @@ public class UniversalBlendshapes : MonoBehaviour
             if (elapsed > blinkDuration)
             {
                 blinkStartTime = -1f;
-                // Once finished, zero out Blink if not actively held
-                if (Blink <= 0.05f) Blink = 0f;
+                autoBlinkWeight = 0f;
             }
             else
             {
                 float t = elapsed / blinkDuration;
                 float autoVal = t < 0.45f ? (t / 0.45f) : (1f - (t - 0.45f) / 0.55f);
-                if (Blink < autoVal)
-                {
-                    Blink = autoVal;
-                }
+                autoBlinkWeight = Mathf.Clamp01(autoVal);
             }
         }
     }
 
     private float GetInputValue(int i) => i switch
     {
-        0 => Blink,
+        0 => Mathf.Max(Blink, autoBlinkWeight),
         1 => Blink_L,
         2 => Blink_R,
         3 => LookUp,

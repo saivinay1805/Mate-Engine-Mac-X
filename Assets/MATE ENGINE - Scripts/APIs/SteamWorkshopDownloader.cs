@@ -323,14 +323,16 @@ namespace MateEngine.Workshop
             if (!string.IsNullOrEmpty(vrmFile) || (!string.IsNullOrEmpty(meFile) && !IsDanceME(meFile)))
             {
                 string srcModel = !string.IsNullOrEmpty(vrmFile) ? vrmFile : meFile;
-                string destModel = Path.Combine(workshopDir, Path.GetFileName(srcModel));
+                string itemFolder = Path.Combine(workshopDir, item.id);
+                Directory.CreateDirectory(itemFolder);
+                string destModel = Path.Combine(itemFolder, Path.GetFileName(srcModel));
                 File.Copy(srcModel, destModel, true);
 
                 string destThumb = "";
                 if (!string.IsNullOrEmpty(thumbFile) && File.Exists(thumbFile))
                 {
                     string thumbExt = Path.GetExtension(thumbFile);
-                    destThumb = Path.Combine(thumbsDir, Path.GetFileNameWithoutExtension(destModel) + "_thumb" + thumbExt);
+                    destThumb = Path.Combine(thumbsDir, $"{item.id}_{Path.GetFileNameWithoutExtension(destModel)}_thumb{thumbExt}");
                     File.Copy(thumbFile, destThumb, true);
                 }
 
@@ -346,7 +348,7 @@ namespace MateEngine.Workshop
                     catch { }
                 }
 
-                entries.RemoveAll(e => e.steamFileId == wid || string.Equals(e.filePath, destModel, StringComparison.OrdinalIgnoreCase));
+                entries.RemoveAll(e => e.steamFileId == wid);
                 entries.Add(new AvatarLibraryMenu.AvatarEntry
                 {
                     displayName = displayName,

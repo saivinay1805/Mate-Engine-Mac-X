@@ -48,7 +48,6 @@ public class SaveLoadHandler : MonoBehaviour
         }
 
         LoadFromDisk();
-        data.enableFeedSystem = true;
         ApplyAllSettingsToAllAvatars();
 
         var theme = FindAnyObjectByType<ThemeManager>();

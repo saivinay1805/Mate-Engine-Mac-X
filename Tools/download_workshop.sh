@@ -14,6 +14,7 @@ if [ $# -lt 1 ]; then
 fi
 
 INPUT="$1"
+TARGET_BASE="${2:-${MATE_PERSISTENT_DATA_PATH:-$HOME/Library/Application Support/Shinymoon/MateEngineX}}"
 ID=$(echo "$INPUT" | grep -oE '[0-9]{8,12}' | head -n 1)
 
 if [ -z "$ID" ]; then
@@ -40,7 +41,7 @@ import os, sys, shutil, json
 app_id = '$APP_ID'
 item_id = '$ID'
 steam_dir = os.path.expanduser('~/Library/Application Support/Steam/steamapps/workshop/content/' + app_id + '/' + item_id)
-target_base = os.path.expanduser('~/Library/Application Support/Shinymoon/MateEngineX')
+target_base = os.path.expanduser('$TARGET_BASE')
 
 os.makedirs(os.path.join(target_base, 'Steam Workshop'), exist_ok=True)
 os.makedirs(os.path.join(target_base, 'Thumbnails'), exist_ok=True)
@@ -61,16 +62,34 @@ if os.path.exists(meta_path):
     except:
         pass
 
-if vrm_file or me_file:
+def is_dance_or_mod_me(filepath):
+    if not filepath or not os.path.exists(filepath):
+        return False
+    try:
+        import zipfile
+        if zipfile.is_zipfile(filepath):
+            with zipfile.ZipFile(filepath, 'r') as z:
+                names = [n.lower() for n in z.namelist()]
+                return any('dance_meta.json' in n or n.endswith('.bundle') for n in names)
+    except:
+        pass
+    return False
+
+me_path = os.path.join(steam_dir, me_file) if me_file else None
+me_is_dance = is_dance_or_mod_me(me_path)
+
+if vrm_file or (me_file and not me_is_dance):
     model_name = vrm_file if vrm_file else me_file
     src_model = os.path.join(steam_dir, model_name)
-    dst_model = os.path.join(target_base, 'Steam Workshop', model_name)
+    item_dir = os.path.join(target_base, 'Steam Workshop', item_id)
+    os.makedirs(item_dir, exist_ok=True)
+    dst_model = os.path.join(item_dir, model_name)
     shutil.copy2(src_model, dst_model)
     
     dst_thumb = ''
     if thumb_file:
         src_thumb = os.path.join(steam_dir, thumb_file)
-        dst_thumb = os.path.join(target_base, 'Thumbnails', thumb_file)
+        dst_thumb = os.path.join(target_base, 'Thumbnails', f'{item_id}_{thumb_file}')
         shutil.copy2(src_thumb, dst_thumb)
     elif model_name.endswith('.vrm'):
         try:
@@ -100,7 +119,7 @@ if vrm_file or me_file:
                     bv = gltf['bufferViews'][img_info['bufferView']]
                     f.seek(bin_offset + bv.get('byteOffset', 0))
                     img_data = f.read(bv['byteLength'])
-                    dst_thumb = os.path.join(target_base, 'Thumbnails', os.path.splitext(model_name)[0] + '_thumb.png')
+                    dst_thumb = os.path.join(target_base, 'Thumbnails', f'{item_id}_{os.path.splitext(model_name)[0]}_thumb.png')
                     with open(dst_thumb, 'wb') as thumb_f:
                         thumb_f.write(img_data)
         except Exception as e:
@@ -115,7 +134,7 @@ if vrm_file or me_file:
         except:
             entries = []
             
-    clean_entries = [e for e in entries if str(e.get('steamFileId')) != item_id and e.get('filePath') != dst_model]
+    clean_entries = [e for e in entries if str(e.get('steamFileId')) != item_id]
     clean_entries.append({
         'displayName': metadata.get('displayName', os.path.splitext(model_name)[0]),
         'author': metadata.get('author', 'Workshop'),
@@ -134,9 +153,26 @@ if vrm_file or me_file:
         
     print(f'Successfully installed avatar: {model_name} to MateEngineX library!')
 
-if unity3d_file:
-    src_dance = os.path.join(steam_dir, unity3d_file)
-    dst_dance = os.path.join(target_base, 'Mods', unity3d_file)
+if unity3d_file or (me_file and me_is_dance):
+    mod_file = unity3d_file if unity3d_file else me_file
+    src_dance = os.path.join(steam_dir, mod_file)
+    dst_dance = os.path.join(target_base, 'Mods', mod_file)
     shutil.copy2(src_dance, dst_dance)
-    print(f'Successfully installed dance: {unity3d_file} to Mods folder!')
+
+    map_path = os.path.join(target_base, 'mods_workshop_map.json')
+    mod_map = {}
+    if os.path.exists(map_path):
+        try:
+            with open(map_path, 'r', encoding='utf-8') as mf:
+                mod_map = json.load(mf)
+        except:
+            mod_map = {}
+    try:
+        mod_map[mod_file] = int(item_id)
+    except:
+        mod_map[mod_file] = item_id
+    with open(map_path, 'w', encoding='utf-8') as mf:
+        json.dump(mod_map, mf, indent=2)
+
+    print(f'Successfully installed dance: {mod_file} to Mods folder!')
 "

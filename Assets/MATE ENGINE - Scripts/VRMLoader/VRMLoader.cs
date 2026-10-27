@@ -29,6 +29,7 @@ public class VRMLoader : MonoBehaviour
     private const string LegacyModelPathKey = "SavedPathModel";
     private RuntimeGltfInstance currentGltf;
     private AssetBundle currentBundle;
+    private int currentLoadGeneration = 0;
 
     void Start()
     {
@@ -243,6 +244,8 @@ public class VRMLoader : MonoBehaviour
 
     public async void LoadVRM(string path)
     {
+        int loadGeneration = ++currentLoadGeneration;
+
         if (path.EndsWith(".me", StringComparison.OrdinalIgnoreCase))
         {
             LoadAssetBundleModel(path);
@@ -283,6 +286,11 @@ public class VRMLoader : MonoBehaviour
         try
         {
             byte[] fileData = await Task.Run(() => File.ReadAllBytes(path));
+            if (loadGeneration != currentLoadGeneration)
+            {
+                Debug.Log($"[VRMLoader] Superseded load cancelled after reading bytes for: {path}");
+                return;
+            }
             if (fileData == null || fileData.Length == 0) return;
 
             GameObject loadedModel = null;
@@ -295,6 +303,13 @@ public class VRMLoader : MonoBehaviour
                 {
                     using var importer10 = new Vrm10Importer(vrm10Data);
                     var instance10 = await importer10.LoadAsync(new ImmediateCaller());
+                    if (loadGeneration != currentLoadGeneration)
+                    {
+                        Debug.Log($"[VRMLoader] Superseded load cancelled after VRM10 import for: {path}");
+                        if (instance10.Root != null) Destroy(instance10.Root);
+                        instance10.Dispose();
+                        return;
+                    }
                     if (instance10.Root != null)
                     {
                         loadedModel = instance10.Root;
@@ -316,6 +331,13 @@ public class VRMLoader : MonoBehaviour
                     {
                         importer = new VRMImporterContext(new VRMData(gltfData));
                         var instance = await importer.LoadAsync(new ImmediateCaller());
+                        if (loadGeneration != currentLoadGeneration)
+                        {
+                            Debug.Log($"[VRMLoader] Superseded load cancelled after VRM0X import for: {path}");
+                            if (instance.Root != null) Destroy(instance.Root);
+                            instance.Dispose();
+                            return;
+                        }
                         if (instance.Root != null)
                         {
                             loadedModel = instance.Root;
@@ -333,6 +355,12 @@ public class VRMLoader : MonoBehaviour
             }
 
             if (loadedModel == null) return;
+            if (loadGeneration != currentLoadGeneration)
+            {
+                Debug.Log($"[VRMLoader] Superseded load cancelled before finalize for: {path}");
+                Destroy(loadedModel);
+                return;
+            }
 
             FinalizeLoadedModel(loadedModel, path);
             if (SaveLoadHandler.Instance != null)

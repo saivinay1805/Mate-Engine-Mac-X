@@ -223,6 +223,50 @@ public class LaunchMateEngineInstances : MonoBehaviour
             return;
         }
 
+        string basePath = !string.IsNullOrEmpty(persistentPath) ? persistentPath : Application.persistentDataPath;
+        string reservePidFile = Path.Combine(basePath, $"instance_{index}.pid");
+        bool reserved = false;
+
+        try
+        {
+            using (var fs = new FileStream(reservePidFile, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(fs))
+            {
+                writer.Write(Process.GetCurrentProcess().Id.ToString());
+                reserved = true;
+            }
+        }
+        catch (IOException)
+        {
+            if (IsInstanceAlive(index))
+            {
+                UpdateButtonText(index, true);
+                return;
+            }
+            // Stale file: retry once
+            try
+            {
+                File.Delete(reservePidFile);
+                using (var fs = new FileStream(reservePidFile, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                using (var writer = new StreamWriter(fs))
+                {
+                    writer.Write(Process.GetCurrentProcess().Id.ToString());
+                    reserved = true;
+                }
+            }
+            catch
+            {
+                reserved = false;
+            }
+        }
+        catch { }
+
+        if (!reserved)
+        {
+            UnityEngine.Debug.LogWarning($"[Launcher] Could not exclusively reserve slot {index}.");
+            return;
+        }
+
         startingInstances[index] = Time.time;
         UpdateButtonStarting(index);
 
@@ -250,6 +294,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
             {
                 startingInstances.Remove(index);
                 UpdateButtonText(index, false);
+                try { File.Delete(reservePidFile); } catch { }
                 UnityEngine.Debug.LogError("[Launcher] open -n bundle fallback failed: " + exOpen.Message);
             }
         }
@@ -260,6 +305,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
         {
             startingInstances.Remove(index);
             UpdateButtonText(index, false);
+            try { File.Delete(reservePidFile); } catch { }
             UnityEngine.Debug.LogError("[Launcher] Executable not found: " + exePath);
             return;
         }
@@ -292,6 +338,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
         {
             startingInstances.Remove(index);
             UpdateButtonText(index, false);
+            try { File.Delete(reservePidFile); } catch { }
             UnityEngine.Debug.LogError("[Launcher] Failed to start instance " + index + ": " + ex.Message);
         }
     }
@@ -321,8 +368,14 @@ public class LaunchMateEngineInstances : MonoBehaviour
                     try
                     {
                         var proc = Process.GetProcessById(pid);
-                        if (!proc.HasExited)
+                        if (IsMateEngineProcess(proc))
+                        {
                             proc.Kill();
+                        }
+                        else
+                        {
+                            UnityEngine.Debug.LogWarning($"[Launcher] Refusing to kill PID {pid} for instance {index}: process name does not match MateEngine");
+                        }
                     }
                     catch { }
                 }
@@ -364,7 +417,7 @@ public class LaunchMateEngineInstances : MonoBehaviour
                 try
                 {
                     var proc = Process.GetProcessById(pid);
-                    if (!proc.HasExited) return true;
+                    if (IsMateEngineProcess(proc)) return true;
                 }
                 catch { }
             }
@@ -411,6 +464,35 @@ public class LaunchMateEngineInstances : MonoBehaviour
         {
             panel.SetActive(!panel.activeSelf);
         }
+    }
+
+    private bool IsMateEngineProcess(Process proc)
+    {
+        if (proc == null) return false;
+        try
+        {
+            if (proc.HasExited) return false;
+            string name = proc.ProcessName;
+            if (!string.IsNullOrEmpty(name))
+            {
+                if (name.IndexOf("MateEngine", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+#if UNITY_EDITOR
+                if (name.IndexOf("Unity", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+#endif
+            }
+
+            try
+            {
+                string mainModule = proc.MainModule?.FileName;
+                if (!string.IsNullOrEmpty(mainModule) && mainModule.IndexOf("MateEngine", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            catch { }
+        }
+        catch { }
+        return false;
     }
 
     private string GetExecutablePath()

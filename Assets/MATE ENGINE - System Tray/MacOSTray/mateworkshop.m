@@ -592,32 +592,48 @@ static NSString *gDataPath = nil;
         return;
     }
     
-    // Find next available instance index 1..5
+    // Find next available instance index 1..5 with atomic O_CREAT | O_EXCL reservation
     int nextIdx = -1;
+    NSString *reservePidFile = nil;
     for (int i = 1; i <= 5; i++) {
         NSString *pidFile = [base stringByAppendingPathComponent:[NSString stringWithFormat:@"instance_%d.pid", i]];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:pidFile]) {
+        const char *cPath = [pidFile UTF8String];
+        
+        int fd = open(cPath, O_WRONLY | O_CREAT | O_EXCL, 0644);
+        if (fd >= 0) {
+            NSString *curPidStr = [NSString stringWithFormat:@"%d\n", (int)getpid()];
+            write(fd, [curPidStr UTF8String], strlen([curPidStr UTF8String]));
+            close(fd);
+            nextIdx = i;
+            reservePidFile = pidFile;
+            break;
+        } else if (errno == EEXIST) {
             NSString *pidStr = [NSString stringWithContentsOfFile:pidFile encoding:NSUTF8StringEncoding error:nil];
             pid_t pid = (pid_t)[pidStr intValue];
             if (pid > 0 && kill(pid, 0) == 0) {
                 continue;
             }
+            
+            unlink(cPath);
+            fd = open(cPath, O_WRONLY | O_CREAT | O_EXCL, 0644);
+            if (fd >= 0) {
+                NSString *curPidStr = [NSString stringWithFormat:@"%d\n", (int)getpid()];
+                write(fd, [curPidStr UTF8String], strlen([curPidStr UTF8String]));
+                close(fd);
+                nextIdx = i;
+                reservePidFile = pidFile;
+                break;
+            }
         }
-        nextIdx = i;
-        break;
     }
 
-    if (nextIdx < 1 || nextIdx > 5) {
+    if (nextIdx < 1 || nextIdx > 5 || !reservePidFile) {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSString *js = [NSString stringWithFormat:@"window.onAvatarSpawned('%@', false, 'Maximum of 5 avatars reached. Please close an avatar first.');", itemId];
             [self.webView evaluateJavaScript:js completionHandler:nil];
         });
         return;
     }
-
-    // Reserve slot temporarily with current PID so rapid clicks do not pick the same slot while child is launching
-    NSString *reservePidFile = [base stringByAppendingPathComponent:[NSString stringWithFormat:@"instance_%d.pid", nextIdx]];
-    [[NSString stringWithFormat:@"%d", (int)getpid()] writeToFile:reservePidFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
     
     NSString *instanceDir = [base stringByAppendingPathComponent:[NSString stringWithFormat:@"Instance_%d", nextIdx]];
     [[NSFileManager defaultManager] createDirectoryAtPath:instanceDir withIntermediateDirectories:YES attributes:nil error:nil];

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 
 # Steam App ID for Mate Engine
 APP_ID=3625270
@@ -35,13 +35,13 @@ if [ ! -d "$STEAM_DIR" ]; then
 fi
 
 echo "Installing to MateEngineX..."
-python3 -c "
-import os, sys, shutil, json
+python3 - "$APP_ID" "$ID" "$TARGET_BASE" << 'PYEOF'
+import os, sys, shutil, json, fcntl
 
-app_id = '$APP_ID'
-item_id = '$ID'
+app_id = sys.argv[1]
+item_id = sys.argv[2]
+target_base = os.path.expanduser(sys.argv[3])
 steam_dir = os.path.expanduser('~/Library/Application Support/Steam/steamapps/workshop/content/' + app_id + '/' + item_id)
-target_base = os.path.expanduser('$TARGET_BASE')
 
 os.makedirs(os.path.join(target_base, 'Steam Workshop'), exist_ok=True)
 os.makedirs(os.path.join(target_base, 'Thumbnails'), exist_ok=True)
@@ -125,31 +125,39 @@ if vrm_file or (me_file and not me_is_dance):
         except Exception as e:
             print(f'Thumbnail extraction error: {e}')
         
-    avatars_json_path = os.path.join(target_base, 'avatars.json')
-    entries = []
-    if os.path.exists(avatars_json_path):
+    avatars_lock = os.path.join(target_base, 'avatars.json.lock')
+    with open(avatars_lock, 'w') as alf:
+        fcntl.flock(alf, fcntl.LOCK_EX)
         try:
-            with open(avatars_json_path, 'r', encoding='utf-8') as f:
-                entries = json.load(f)
-        except:
+            avatars_json_path = os.path.join(target_base, 'avatars.json')
             entries = []
-            
-    clean_entries = [e for e in entries if str(e.get('steamFileId')) != item_id]
-    clean_entries.append({
-        'displayName': metadata.get('displayName', os.path.splitext(model_name)[0]),
-        'author': metadata.get('author', 'Workshop'),
-        'version': str(metadata.get('version', '1.0')),
-        'fileType': metadata.get('fileType', 'VRM1.X' if model_name.endswith('.vrm') else '.ME'),
-        'filePath': dst_model,
-        'thumbnailPath': dst_thumb,
-        'polygonCount': int(metadata.get('polygonCount', 0)),
-        'isSteamWorkshop': True,
-        'steamFileId': int(item_id),
-        'isNSFW': bool(metadata.get('isNSFW', False)),
-        'isOwner': False
-    })
-    with open(avatars_json_path, 'w', encoding='utf-8') as f:
-        json.dump(clean_entries, f, indent=2, ensure_ascii=False)
+            if os.path.exists(avatars_json_path):
+                try:
+                    with open(avatars_json_path, 'r', encoding='utf-8') as f:
+                        entries = json.load(f)
+                except:
+                    entries = []
+                    
+            clean_entries = [e for e in entries if str(e.get('steamFileId')) != item_id]
+            clean_entries.append({
+                'displayName': metadata.get('displayName', os.path.splitext(model_name)[0]),
+                'author': metadata.get('author', 'Workshop'),
+                'version': str(metadata.get('version', '1.0')),
+                'fileType': metadata.get('fileType', 'VRM1.X' if model_name.endswith('.vrm') else '.ME'),
+                'filePath': dst_model,
+                'thumbnailPath': dst_thumb,
+                'polygonCount': int(metadata.get('polygonCount', 0)),
+                'isSteamWorkshop': True,
+                'steamFileId': int(item_id),
+                'isNSFW': bool(metadata.get('isNSFW', False)),
+                'isOwner': False
+            })
+            tmp_json = avatars_json_path + f'.tmp.{os.getpid()}'
+            with open(tmp_json, 'w', encoding='utf-8') as f:
+                json.dump(clean_entries, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_json, avatars_json_path)
+        finally:
+            fcntl.flock(alf, fcntl.LOCK_UN)
         
     print(f'Successfully installed avatar: {model_name} to MateEngineX library!')
 
@@ -159,20 +167,28 @@ if unity3d_file or (me_file and me_is_dance):
     dst_dance = os.path.join(target_base, 'Mods', mod_file)
     shutil.copy2(src_dance, dst_dance)
 
-    map_path = os.path.join(target_base, 'mods_workshop_map.json')
-    mod_map = {}
-    if os.path.exists(map_path):
+    map_lock = os.path.join(target_base, 'mods_workshop_map.json.lock')
+    with open(map_lock, 'w') as mlf:
+        fcntl.flock(mlf, fcntl.LOCK_EX)
         try:
-            with open(map_path, 'r', encoding='utf-8') as mf:
-                mod_map = json.load(mf)
-        except:
+            map_path = os.path.join(target_base, 'mods_workshop_map.json')
             mod_map = {}
-    try:
-        mod_map[mod_file] = int(item_id)
-    except:
-        mod_map[mod_file] = item_id
-    with open(map_path, 'w', encoding='utf-8') as mf:
-        json.dump(mod_map, mf, indent=2)
+            if os.path.exists(map_path):
+                try:
+                    with open(map_path, 'r', encoding='utf-8') as mf:
+                        mod_map = json.load(mf)
+                except:
+                    mod_map = {}
+            try:
+                mod_map[mod_file] = int(item_id)
+            except:
+                mod_map[mod_file] = item_id
+            tmp_map = map_path + f'.tmp.{os.getpid()}'
+            with open(tmp_map, 'w', encoding='utf-8') as mf:
+                json.dump(mod_map, mf, indent=2)
+            os.replace(tmp_map, map_path)
+        finally:
+            fcntl.flock(mlf, fcntl.LOCK_UN)
 
     print(f'Successfully installed dance: {mod_file} to Mods folder!')
-"
+PYEOF

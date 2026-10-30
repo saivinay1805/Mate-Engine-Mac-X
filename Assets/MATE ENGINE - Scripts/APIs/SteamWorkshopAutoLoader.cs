@@ -119,15 +119,17 @@ public class SteamWorkshopAutoLoader : MonoBehaviour
         string workshopDir = workshopFolderPath;
         string modsDir = modsFolderPath;
 
+        HashSet<ulong> allSubscribedIds = new HashSet<ulong>(subscribed.Select(s => s.m_PublishedFileId));
+
         var task = Task.Run(() =>
         {
             var res = new WorkResult();
-            var subscribedIds = new HashSet<ulong>(snapshot.Select(s => s.id.m_PublishedFileId));
 
-            bool modsCleaned = CleanupUnsubscribedWorkshopMods(subscribedIds, modsDir, tempCachePath, persistentPath);
-            bool avatarsCleaned = CleanupUnsubscribedWorkshopAvatars(subscribedIds, workshopDir, persistentPath);
+            bool modsCleaned = CleanupUnsubscribedWorkshopMods(allSubscribedIds, modsDir, tempCachePath, persistentPath);
+            bool avatarsCleaned = CleanupUnsubscribedWorkshopAvatars(allSubscribedIds, workshopDir, persistentPath);
 
-            var avatarEntries = ReadAvatarEntries(persistentPath);
+            var initialWorkshopIds = GetExistingWorkshopIds(persistentPath);
+            var processedWorkshopAvatars = new List<AvatarLibraryMenu.AvatarEntry>();
             bool avatarChanged = false;
             bool modsChanged = modsCleaned;
 
@@ -160,20 +162,20 @@ public class SteamWorkshopAutoLoader : MonoBehaviour
                         if (changed) modsChanged = true;
                         continue;
                     }
-                    bool avChanged = HandleAvatarFile(item.id, file, item.needsUpdate, avatarEntries, workshopDir, persistentPath);
+                    bool avChanged = HandleAvatarFile(item.id, file, item.needsUpdate, processedWorkshopAvatars, workshopDir, persistentPath);
                     if (avChanged) avatarChanged = true;
                     continue;
                 }
 
                 if (ext == ".vrm")
                 {
-                    bool avChanged = HandleAvatarFile(item.id, file, item.needsUpdate, avatarEntries, workshopDir, persistentPath);
+                    bool avChanged = HandleAvatarFile(item.id, file, item.needsUpdate, processedWorkshopAvatars, workshopDir, persistentPath);
                     if (avChanged) avatarChanged = true;
                     continue;
                 }
             }
 
-            if (avatarChanged || avatarsCleaned) SaveAvatarEntries(avatarEntries, persistentPath);
+            if (avatarChanged) SaveAvatarEntries(processedWorkshopAvatars, initialWorkshopIds, persistentPath);
 
             res.AvatarsChanged = avatarChanged || avatarsCleaned;
             res.ModsChanged = modsChanged;
@@ -194,18 +196,15 @@ public class SteamWorkshopAutoLoader : MonoBehaviour
         if (pendingRefresh) RefreshWorkshopItems();
     }
 
-    private bool HandleAvatarFile(PublishedFileId_t fileId, string sourcePath, bool needsUpdate, List<AvatarLibraryMenu.AvatarEntry> avatarEntries, string workshopDir, string persistentPath)
+    private bool HandleAvatarFile(PublishedFileId_t fileId, string sourcePath, bool needsUpdate, List<AvatarLibraryMenu.AvatarEntry> processedWorkshopAvatars, string workshopDir, string persistentPath)
     {
         string baseName = Path.GetFileName(sourcePath);
         string targetPath = Path.Combine(workshopDir, baseName);
 
-        var existingSamePath = avatarEntries.FirstOrDefault(e => e.filePath == targetPath);
-        if (existingSamePath != null && existingSamePath.steamFileId != fileId.m_PublishedFileId)
+        if (processedWorkshopAvatars.Any(e => e.filePath == targetPath && e.steamFileId != fileId.m_PublishedFileId))
             targetPath = Path.Combine(workshopDir, $"{fileId.m_PublishedFileId}_{baseName}");
 
         bool copiedModel = CopyFileIfNeeded(sourcePath, targetPath, needsUpdate);
-
-        bool alreadyRegistered = avatarEntries.Any(e => e.filePath == targetPath);
 
         string installDir = Path.GetDirectoryName(sourcePath) ?? "";
         string displayName = Path.GetFileNameWithoutExtension(sourcePath);
@@ -253,42 +252,23 @@ public class SteamWorkshopAutoLoader : MonoBehaviour
             catch { }
         }
 
-        if (!alreadyRegistered)
+        var entry = new AvatarLibraryMenu.AvatarEntry
         {
-            var newEntry = new AvatarLibraryMenu.AvatarEntry
-            {
-                displayName = displayName,
-                author = author,
-                version = version,
-                fileType = format,
-                filePath = targetPath,
-                thumbnailPath = thumbnailPath,
-                polygonCount = polygonCount,
-                isSteamWorkshop = true,
-                steamFileId = fileId.m_PublishedFileId,
-                isNSFW = isNSFW,
-                isOwner = false
-            };
-            avatarEntries.Add(newEntry);
-            return true;
-        }
-        else
-        {
-            var entry = avatarEntries.First(e => e.filePath == targetPath);
-            bool metaChanged = false;
+            displayName = displayName,
+            author = author,
+            version = version,
+            fileType = format,
+            filePath = targetPath,
+            thumbnailPath = thumbnailPath,
+            polygonCount = polygonCount,
+            isSteamWorkshop = true,
+            steamFileId = fileId.m_PublishedFileId,
+            isNSFW = isNSFW,
+            isOwner = false
+        };
 
-            if (entry.displayName != displayName) { entry.displayName = displayName; metaChanged = true; }
-            if (entry.author != author) { entry.author = author; metaChanged = true; }
-            if (entry.version != version) { entry.version = version; metaChanged = true; }
-            if (entry.fileType != format) { entry.fileType = format; metaChanged = true; }
-            if (entry.polygonCount != polygonCount) { entry.polygonCount = polygonCount; metaChanged = true; }
-            if (entry.isNSFW != isNSFW) { entry.isNSFW = isNSFW; metaChanged = true; }
-            if (!string.IsNullOrEmpty(thumbnailPath) && entry.thumbnailPath != thumbnailPath) { entry.thumbnailPath = thumbnailPath; metaChanged = true; }
-            if (entry.steamFileId == 0) { entry.isSteamWorkshop = true; entry.steamFileId = fileId.m_PublishedFileId; metaChanged = true; }
-
-            if (metaChanged || copiedModel) return true;
-            return false;
-        }
+        processedWorkshopAvatars.Add(entry);
+        return true;
     }
 
     private bool IsDanceME(string mePath)
@@ -414,55 +394,126 @@ public class SteamWorkshopAutoLoader : MonoBehaviour
 
     private bool CleanupUnsubscribedWorkshopAvatars(HashSet<ulong> subscribedIds, string workshopDir, string persistentPath)
     {
-        var avatars = ReadAvatarEntries(persistentPath);
-        bool changed = false;
         string workshopFull = Path.GetFullPath(workshopDir);
         string thumbsDir = Path.GetFullPath(Path.Combine(persistentPath, "Thumbnails"));
+        bool anyChanged = false;
 
-        for (int i = avatars.Count - 1; i >= 0; i--)
+        AvatarLibraryMenu.MutateAvatarsRegistry(avatars =>
         {
-            var a = avatars[i];
-            if (!(a.isSteamWorkshop && a.steamFileId != 0 && !subscribedIds.Contains(a.steamFileId))) continue;
-
-            string fileFull = string.IsNullOrEmpty(a.filePath) ? "" : Path.GetFullPath(a.filePath);
-            string thumbFull = string.IsNullOrEmpty(a.thumbnailPath) ? "" : Path.GetFullPath(a.thumbnailPath);
-            bool isInsideWorkshop = !string.IsNullOrEmpty(fileFull) && fileFull.StartsWith(workshopFull, StringComparison.OrdinalIgnoreCase);
-
-            if (isInsideWorkshop)
+            bool changed = false;
+            for (int i = avatars.Count - 1; i >= 0; i--)
             {
-                try { if (File.Exists(fileFull)) File.Delete(fileFull); } catch { }
-                try
+                var a = avatars[i];
+                if (!(a.isSteamWorkshop && a.steamFileId != 0 && !subscribedIds.Contains(a.steamFileId))) continue;
+
+                string fileFull = string.IsNullOrEmpty(a.filePath) ? "" : Path.GetFullPath(a.filePath);
+                string thumbFull = string.IsNullOrEmpty(a.thumbnailPath) ? "" : Path.GetFullPath(a.thumbnailPath);
+                bool isInsideWorkshop = !string.IsNullOrEmpty(fileFull) && fileFull.StartsWith(workshopFull, StringComparison.OrdinalIgnoreCase);
+
+                if (isInsideWorkshop)
                 {
-                    if (!string.IsNullOrEmpty(thumbFull) && thumbFull.StartsWith(thumbsDir, StringComparison.OrdinalIgnoreCase) && File.Exists(thumbFull))
-                        File.Delete(thumbFull);
+                    try { if (File.Exists(fileFull)) File.Delete(fileFull); } catch { }
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(thumbFull) && thumbFull.StartsWith(thumbsDir, StringComparison.OrdinalIgnoreCase) && File.Exists(thumbFull))
+                            File.Delete(thumbFull);
+                    }
+                    catch { }
+                    avatars.RemoveAt(i);
+                    changed = true;
                 }
-                catch { }
-                avatars.RemoveAt(i);
-                changed = true;
+                else
+                {
+                    a.isSteamWorkshop = false;
+                    changed = true;
+                }
             }
-            else
-            {
-                a.isSteamWorkshop = false;
-                changed = true;
-            }
-        }
+            if (changed) anyChanged = true;
+            return changed;
+        }, persistentPath);
 
-        if (changed) SaveAvatarEntries(avatars, persistentPath);
-        return changed;
+        return anyChanged;
     }
 
-    private List<AvatarLibraryMenu.AvatarEntry> ReadAvatarEntries(string persistentPath)
+    private HashSet<ulong> GetExistingWorkshopIds(string persistentPath)
     {
-        string path = Path.Combine(persistentPath, "avatars.json");
-        if (!File.Exists(path)) return new List<AvatarLibraryMenu.AvatarEntry>();
-        try { return JsonConvert.DeserializeObject<List<AvatarLibraryMenu.AvatarEntry>>(File.ReadAllText(path)) ?? new List<AvatarLibraryMenu.AvatarEntry>(); }
-        catch { return new List<AvatarLibraryMenu.AvatarEntry>(); }
+        var ids = new HashSet<ulong>();
+        var entries = AvatarLibraryMenu.ReadAvatarsRegistry(persistentPath);
+        if (entries != null)
+        {
+            foreach (var e in entries)
+            {
+                if (e.isSteamWorkshop && e.steamFileId > 0)
+                    ids.Add(e.steamFileId);
+            }
+        }
+        return ids;
     }
 
     private void SaveAvatarEntries(List<AvatarLibraryMenu.AvatarEntry> entries, string persistentPath)
     {
-        string path = Path.Combine(persistentPath, "avatars.json");
-        try { File.WriteAllText(path, JsonConvert.SerializeObject(entries, Formatting.Indented)); } catch { }
+        SaveAvatarEntries(entries, null, persistentPath);
+    }
+
+    private void SaveAvatarEntries(List<AvatarLibraryMenu.AvatarEntry> entries, HashSet<ulong> initialWorkshopIds, string persistentPath)
+    {
+        if (entries == null || entries.Count == 0) return;
+
+        AvatarLibraryMenu.MutateAvatarsRegistry(diskEntries =>
+        {
+            bool modified = false;
+            foreach (var item in entries)
+            {
+                if (!item.isSteamWorkshop || item.steamFileId == 0) continue;
+
+                var match = diskEntries.FirstOrDefault(e =>
+                    (item.steamFileId > 0 && e.steamFileId == item.steamFileId) ||
+                    (!string.IsNullOrEmpty(item.filePath) && string.Equals(e.filePath, item.filePath, StringComparison.OrdinalIgnoreCase))
+                );
+
+                if (match != null)
+                {
+                    if (match.fileType != item.fileType) { match.fileType = item.fileType; modified = true; }
+                    if (match.version != item.version) { match.version = item.version; modified = true; }
+                    if (match.polygonCount != item.polygonCount && item.polygonCount > 0) { match.polygonCount = item.polygonCount; modified = true; }
+                    if (!string.IsNullOrEmpty(item.filePath) && !string.Equals(match.filePath, item.filePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        match.filePath = item.filePath;
+                        modified = true;
+                    }
+                    if (string.IsNullOrEmpty(match.thumbnailPath) && !string.IsNullOrEmpty(item.thumbnailPath))
+                    {
+                        match.thumbnailPath = item.thumbnailPath;
+                        modified = true;
+                    }
+                    if (match.steamFileId == 0 && item.steamFileId > 0)
+                    {
+                        match.isSteamWorkshop = true;
+                        match.steamFileId = item.steamFileId;
+                        modified = true;
+                    }
+                }
+                else
+                {
+                    // match == null: Not found in current disk registry.
+                    // If this item was already registered when refresh started, it was removed by the user
+                    // while refresh was processing. Do not resurrect it.
+                    if (initialWorkshopIds != null && initialWorkshopIds.Contains(item.steamFileId))
+                    {
+                        try { if (!string.IsNullOrEmpty(item.filePath) && File.Exists(item.filePath)) File.Delete(item.filePath); } catch { }
+                        try { if (!string.IsNullOrEmpty(item.thumbnailPath) && File.Exists(item.thumbnailPath)) File.Delete(item.thumbnailPath); } catch { }
+                        continue;
+                    }
+
+                    // For genuinely new subscriptions, verify model file exists before registering
+                    if (string.IsNullOrEmpty(item.filePath) || !File.Exists(item.filePath)) continue;
+
+                    diskEntries.Add(item);
+                    modified = true;
+                }
+            }
+            return modified;
+        }, persistentPath);
     }
 
     private void TryCopyThumbFromME(string mePath, string persistentPath)

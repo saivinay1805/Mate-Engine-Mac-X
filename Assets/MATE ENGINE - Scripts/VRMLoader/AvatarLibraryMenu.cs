@@ -398,36 +398,37 @@ public class AvatarLibraryMenu : MonoBehaviour
         }
     }
 
-    public static void AddAvatarToLibrary(string displayName, string author, string version, string fileType, string filePath, Texture2D thumbnail, int polygonCount)
+    public static string GetThumbnailFileName(string filePath)
     {
-        string thumbnailsFolder = Path.Combine(Application.persistentDataPath, "Thumbnails");
+        if (string.IsNullOrEmpty(filePath))
+            return "avatar_thumb.png";
+
+        string baseName = Path.GetFileNameWithoutExtension(filePath);
+        try
+        {
+            string fullPath = Path.GetFullPath(filePath).ToLowerInvariant();
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(fullPath));
+                string hex = BitConverter.ToString(hash, 0, 4).Replace("-", "").ToLowerInvariant();
+                return $"{baseName}_{hex}_thumb.png";
+            }
+        }
+        catch
+        {
+            return baseName + "_thumb.png";
+        }
+    }
+
+    public static void AddAvatarToLibrary(string displayName, string author, string version, string fileType, string filePath, Texture2D thumbnail, int polygonCount, string basePath = null)
+    {
+        string baseDir = !string.IsNullOrEmpty(basePath) ? basePath : Application.persistentDataPath;
+        string thumbnailsFolder = Path.Combine(baseDir, "Thumbnails");
         if (!Directory.Exists(thumbnailsFolder))
             Directory.CreateDirectory(thumbnailsFolder);
 
-        string thumbnailPath = "";
-        if (thumbnail != null)
-        {
-            try
-            {
-                string thumbnailFileName = Path.GetFileNameWithoutExtension(filePath) + "_thumb.png";
-                thumbnailPath = Path.Combine(thumbnailsFolder, thumbnailFileName);
-                File.WriteAllBytes(thumbnailPath, thumbnail.EncodeToPNG());
-            }
-            catch { }
-        }
-
-        AvatarEntry newEntry = new AvatarEntry
-        {
-            displayName = displayName,
-            author = author,
-            version = version,
-            fileType = fileType,
-            filePath = filePath,
-            thumbnailPath = thumbnailPath,
-            polygonCount = polygonCount,
-            isNSFW = false,
-            isOwner = true
-        };
+        string thumbnailFileName = GetThumbnailFileName(filePath);
+        string thumbnailPath = Path.Combine(thumbnailsFolder, thumbnailFileName);
 
         MutateAvatarsRegistry(entries =>
         {
@@ -436,11 +437,20 @@ public class AvatarLibraryMenu : MonoBehaviour
             {
                 // Existing entry found: NEVER reset user or workshop metadata!
                 bool changed = false;
-                if (string.IsNullOrEmpty(existing.thumbnailPath) && !string.IsNullOrEmpty(thumbnailPath))
+
+                // Preserve user-uploaded custom thumbnail! Only write if existing thumbnail is missing
+                bool hasExistingValidThumb = !string.IsNullOrEmpty(existing.thumbnailPath) && File.Exists(existing.thumbnailPath);
+                if (!hasExistingValidThumb && thumbnail != null)
                 {
-                    existing.thumbnailPath = thumbnailPath;
-                    changed = true;
+                    try
+                    {
+                        File.WriteAllBytes(thumbnailPath, thumbnail.EncodeToPNG());
+                        existing.thumbnailPath = thumbnailPath;
+                        changed = true;
+                    }
+                    catch { }
                 }
+
                 if (existing.polygonCount == 0 && polygonCount > 0)
                 {
                     existing.polygonCount = polygonCount;
@@ -449,9 +459,32 @@ public class AvatarLibraryMenu : MonoBehaviour
                 return changed;
             }
 
+            // Fresh entry: write embedded thumbnail
+            if (thumbnail != null)
+            {
+                try
+                {
+                    File.WriteAllBytes(thumbnailPath, thumbnail.EncodeToPNG());
+                }
+                catch { }
+            }
+
+            AvatarEntry newEntry = new AvatarEntry
+            {
+                displayName = displayName,
+                author = author,
+                version = version,
+                fileType = fileType,
+                filePath = filePath,
+                thumbnailPath = (thumbnail != null && File.Exists(thumbnailPath)) ? thumbnailPath : "",
+                polygonCount = polygonCount,
+                isNSFW = false,
+                isOwner = true
+            };
+
             entries.Add(newEntry);
             return true;
-        });
+        }, baseDir);
     }
 
     public void ReloadAvatars()
@@ -534,12 +567,13 @@ public class AvatarLibraryMenu : MonoBehaviour
     private const int LOCK_UN = 8;
 #endif
 
-    public static List<AvatarEntry> MutateAvatarsRegistry(Func<List<AvatarEntry>, bool> modifier)
+    public static List<AvatarEntry> MutateAvatarsRegistry(Func<List<AvatarEntry>, bool> modifier, string basePath = null)
     {
         lock (fileLock)
         {
-            string avatarsJsonPath = Path.Combine(Application.persistentDataPath, "avatars.json");
-            string lockPath = Path.Combine(Application.persistentDataPath, "avatars.json.lock");
+            string baseDir = !string.IsNullOrEmpty(basePath) ? basePath : Application.persistentDataPath;
+            string avatarsJsonPath = Path.Combine(baseDir, "avatars.json");
+            string lockPath = Path.Combine(baseDir, "avatars.json.lock");
 
             FileStream lockStream = null;
             try
@@ -548,9 +582,16 @@ public class AvatarLibraryMenu : MonoBehaviour
 #if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX || UNITY_STANDALONE_LINUX
                 try
                 {
-                    flock(lockStream.SafeFileHandle.DangerousGetHandle().ToInt32(), LOCK_EX);
+                    int flockRet = flock(lockStream.SafeFileHandle.DangerousGetHandle().ToInt32(), LOCK_EX);
+                    if (flockRet != 0)
+                    {
+                        Debug.LogWarning("[AvatarLibraryMenu] flock LOCK_EX returned " + flockRet);
+                    }
                 }
-                catch { }
+                catch (Exception fEx)
+                {
+                    Debug.LogWarning("[AvatarLibraryMenu] flock exception: " + fEx.Message);
+                }
 #endif
 
                 List<AvatarEntry> diskEntries = null;
@@ -560,11 +601,19 @@ public class AvatarLibraryMenu : MonoBehaviour
                     {
                         string currentJson = File.ReadAllText(avatarsJsonPath);
                         diskEntries = JsonConvert.DeserializeObject<List<AvatarEntry>>(currentJson);
+                        if (diskEntries == null)
+                        {
+                            Debug.LogError("[AvatarLibraryMenu] avatars.json deserialized to null! Preserving existing file.");
+                            return null;
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError("[AvatarLibraryMenu] Error reading avatars.json: " + ex.Message + ". Preserving existing file to prevent data loss.");
+                        return null;
+                    }
                 }
-
-                if (diskEntries == null)
+                else
                 {
                     diskEntries = new List<AvatarEntry>();
                 }
@@ -611,6 +660,42 @@ public class AvatarLibraryMenu : MonoBehaviour
                 }
             }
         }
+    }
+
+    public static List<AvatarEntry> ReadAvatarsRegistry(string basePath = null)
+    {
+        List<AvatarEntry> snapshot = null;
+        MutateAvatarsRegistry(entries =>
+        {
+            snapshot = new List<AvatarEntry>(entries);
+            return false;
+        }, basePath);
+        return snapshot ?? new List<AvatarEntry>();
+    }
+
+    public static void UpdateAvatarMetadata(AvatarEntry editedEntry)
+    {
+        if (editedEntry == null) return;
+        MutateAvatarsRegistry(diskEntries =>
+        {
+            var target = diskEntries.FirstOrDefault(e =>
+                (!string.IsNullOrEmpty(editedEntry.filePath) && string.Equals(e.filePath, editedEntry.filePath, StringComparison.OrdinalIgnoreCase)) ||
+                (editedEntry.steamFileId > 0 && e.steamFileId == editedEntry.steamFileId)
+            );
+
+            if (target != null)
+            {
+                target.isNSFW = editedEntry.isNSFW;
+                target.displayName = editedEntry.displayName;
+                target.author = editedEntry.author;
+                target.version = editedEntry.version;
+                target.isOwner = editedEntry.isOwner;
+                if (!string.IsNullOrEmpty(editedEntry.thumbnailPath))
+                    target.thumbnailPath = editedEntry.thumbnailPath;
+                return true;
+            }
+            return false;
+        });
     }
 
     private void SaveAvatars(AvatarEntry editedEntry = null)

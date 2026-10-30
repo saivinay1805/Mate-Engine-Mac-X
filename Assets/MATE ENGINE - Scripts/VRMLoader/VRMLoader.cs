@@ -248,11 +248,13 @@ public class VRMLoader : MonoBehaviour
 
         if (path.EndsWith(".me", StringComparison.OrdinalIgnoreCase))
         {
-            LoadAssetBundleModel(path);
-            if (SaveLoadHandler.Instance != null)
+            if (LoadAssetBundleModel(path))
             {
-                SaveLoadHandler.Instance.data.selectedModelPath = path;
-                SaveLoadHandler.Instance.SaveToDisk();
+                if (SaveLoadHandler.Instance != null)
+                {
+                    SaveLoadHandler.Instance.data.selectedModelPath = path;
+                    SaveLoadHandler.Instance.SaveToDisk();
+                }
             }
             return;
         }
@@ -375,13 +377,13 @@ public class VRMLoader : MonoBehaviour
         }
     }
 
-    private void LoadAssetBundleModel(string path)
+    private bool LoadAssetBundleModel(string path)
     {
         var bundle = AssetBundle.LoadFromFile(path);
         if (bundle == null)
         {
             Debug.LogError("[VRMLoader] Failed to load AssetBundle at: " + path);
-            return;
+            return false;
         }
 
         var prefab = bundle.LoadAllAssets<GameObject>().FirstOrDefault();
@@ -389,11 +391,12 @@ public class VRMLoader : MonoBehaviour
         {
             Debug.LogError("[VRMLoader] No prefab found in AssetBundle.");
             bundle.Unload(true);
-            return;
+            return false;
         }
 
         var instance = Instantiate(prefab);
         FinalizeLoadedModel(instance, path, bundle);
+        return true;
     }
 
     private void FinalizeLoadedModel(GameObject loadedModel, string path, AssetBundle bundle = null)
@@ -490,6 +493,7 @@ public class VRMLoader : MonoBehaviour
 
     public void ResetModel()
     {
+        ++currentLoadGeneration;
         string vrmFolder = Path.Combine(Application.persistentDataPath, "VRM");
         if (Directory.Exists(vrmFolder))
             Directory.Delete(vrmFolder, true);
@@ -507,6 +511,7 @@ public class VRMLoader : MonoBehaviour
             MEModLoader.Instance.AssignHandlersForCurrentAvatar(mainModel);
 
         StartCoroutine(ReleaseRamAndUnloadAssetsCo());
+        SettingsHandlerUtility.ReloadAllSettingsHandlers();
     }
 
     private void DisableMainModel()

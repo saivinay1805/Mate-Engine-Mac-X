@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 using Steamworks;
+using Newtonsoft.Json;
 
 public class MEModHandler : MonoBehaviour
 {
@@ -499,8 +500,43 @@ public class MEModHandler : MonoBehaviour
         }
     }
 
-    ulong ResolveWorkshopIdForPath(string localPath)
+    public static ulong ResolveWorkshopIdForPath(string localPath, string basePath = null)
     {
+        if (string.IsNullOrEmpty(localPath)) return 0UL;
+
+        // 1. Direct parent directory ID check (e.g., Mods/12345/dance.unity3d)
+        try
+        {
+            string parent = Path.GetFileName(Path.GetDirectoryName(localPath));
+            if (ulong.TryParse(parent, out ulong pid) && pid > 0)
+                return pid;
+        }
+        catch { }
+
+        // 2. Query mods_workshop_map.json
+        try
+        {
+            string baseDir = !string.IsNullOrEmpty(basePath) ? basePath : Application.persistentDataPath;
+            string mapPath = Path.Combine(baseDir, "mods_workshop_map.json");
+            if (File.Exists(mapPath))
+            {
+                var map = JsonConvert.DeserializeObject<Dictionary<string, ulong>>(File.ReadAllText(mapPath));
+                if (map != null)
+                {
+                    string fileName = Path.GetFileName(localPath);
+                    string parent = Path.GetFileName(Path.GetDirectoryName(localPath));
+                    string relKey = !string.IsNullOrEmpty(parent) ? $"{parent}/{fileName}" : fileName;
+
+                    if (map.TryGetValue(relKey, out ulong wid) && wid > 0)
+                        return wid;
+                    if (map.TryGetValue(fileName, out ulong widByName) && widByName > 0)
+                        return widByName;
+                }
+            }
+        }
+        catch { }
+
+        // 3. Fallback to Steam API matching against install directory or file size
         try
         {
             if (!SteamManager.Initialized) return 0UL;
@@ -510,20 +546,54 @@ public class MEModHandler : MonoBehaviour
             var ids = new Steamworks.PublishedFileId_t[count];
             SteamUGC.GetSubscribedItems(ids, count);
 
-            string targetName = Path.GetFileName(localPath);
+            var candidates = new List<KeyValuePair<ulong, string>>();
             for (int i = 0; i < ids.Length; i++)
             {
                 if (!SteamUGC.GetItemInstallInfo(ids[i], out ulong _, out string installPath, 1024, out uint _)) continue;
-                if (string.IsNullOrEmpty(installPath) || !Directory.Exists(installPath)) continue;
-                var top = Directory.GetFiles(installPath, "*", SearchOption.TopDirectoryOnly);
-                for (int f = 0; f < top.Length; f++)
-                {
-                    if (string.Equals(Path.GetFileName(top[f]), targetName, StringComparison.OrdinalIgnoreCase))
-                        return ids[i].m_PublishedFileId;
-                }
+                if (!string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
+                    candidates.Add(new KeyValuePair<ulong, string>(ids[i].m_PublishedFileId, installPath));
             }
+
+            return MatchWorkshopCandidate(localPath, candidates);
         }
         catch { }
+
+        return 0UL;
+    }
+
+    public static ulong MatchWorkshopCandidate(string localPath, IEnumerable<KeyValuePair<ulong, string>> candidates)
+    {
+        if (string.IsNullOrEmpty(localPath) || candidates == null) return 0UL;
+
+        try
+        {
+            string targetName = Path.GetFileName(localPath);
+            long localSize = File.Exists(localPath) ? new FileInfo(localPath).Length : -1;
+
+            ulong matchedId = 0UL;
+            int matchCount = 0;
+
+            foreach (var item in candidates)
+            {
+                string installPath = item.Value;
+                if (string.IsNullOrEmpty(installPath) || !Directory.Exists(installPath)) continue;
+
+                string candidate = Path.Combine(installPath, targetName);
+                if (File.Exists(candidate))
+                {
+                    if (localSize >= 0 && new FileInfo(candidate).Length == localSize)
+                    {
+                        matchedId = item.Key;
+                        matchCount++;
+                    }
+                }
+            }
+
+            // Strictly require unambiguous single match; never guess if multiple subscriptions match
+            if (matchCount == 1) return matchedId;
+        }
+        catch { }
+
         return 0UL;
     }
 
@@ -536,7 +606,25 @@ public class MEModHandler : MonoBehaviour
         }
     }
 
-    void RemoveMod(ModEntry mod, GameObject ui)
+    public void RemoveModByPath(string path, GameObject ui = null)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        var mod = loadedMods.FirstOrDefault(m => string.Equals(m.localPath, path, StringComparison.OrdinalIgnoreCase));
+        if (mod != null)
+        {
+            RemoveMod(mod, ui);
+        }
+        else
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            if (ui != null) Destroy(ui);
+            var dance = FindAnyObjectByType<CustomDancePlayer.AvatarDanceHandler>();
+            if (dance != null) dance.RescanMods();
+            LoadAllModsInFolder();
+        }
+    }
+
+    void RemoveMod(ModEntry mod, GameObject ui = null)
     {
         if (mod.retainedBundle != null)
         {

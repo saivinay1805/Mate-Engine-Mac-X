@@ -86,23 +86,12 @@ public class UploadButtonHoldHandler : MonoBehaviour, IPointerDownHandler, IPoin
             if (!Directory.Exists(thumbnailsFolder))
                 Directory.CreateDirectory(thumbnailsFolder);
 
-            string safeName = Path.GetFileNameWithoutExtension(entry.filePath) + "_thumb.png";
+            string safeName = AvatarLibraryMenu.GetThumbnailFileName(entry.filePath);
             string destinationPath = Path.Combine(thumbnailsFolder, safeName);
             File.Copy(paths[0], destinationPath, true);
             entry.thumbnailPath = destinationPath;
 
-            string avatarsJsonPath = Path.Combine(Application.persistentDataPath, "avatars.json");
-            if (File.Exists(avatarsJsonPath))
-            {
-                var json = File.ReadAllText(avatarsJsonPath);
-                var list = JsonConvert.DeserializeObject<List<AvatarLibraryMenu.AvatarEntry>>(json);
-                var match = list.FirstOrDefault(e => e.filePath == entry.filePath);
-                if (match != null)
-                {
-                    match.thumbnailPath = destinationPath;
-                    File.WriteAllText(avatarsJsonPath, JsonConvert.SerializeObject(list, Formatting.Indented));
-                }
-            }
+            AvatarLibraryMenu.UpdateAvatarMetadata(entry);
 
             var menu = GameObject.FindAnyObjectByType<AvatarLibraryMenu>();
             if (menu != null) menu.ReloadAvatars();
